@@ -1,0 +1,483 @@
+// =========================================
+// PRISMA CONFIG
+// =========================================
+
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "mysql"
+}
+
+enum UserLevel {
+  SUPER_ADMIN
+  ADMIN
+  STAFF
+}
+
+enum CustomerStatus {
+  ACTIVE
+  SUSPENDED
+  TERMINATED
+  PENDING
+}
+
+enum InvoiceStatus {
+  UNPAID
+  PARTIAL
+  PAID
+  EXPIRED
+  CANCELLED
+}
+
+enum PaymentMethod {
+  CASH
+  BANK_TRANSFER
+  QRIS
+  VIRTUAL_ACCOUNT
+  E_WALLET
+}
+
+enum PaymentGateway {
+  MANUAL
+  MIDTRANS
+  XENDIT
+  TRIPAY
+  DUITKU
+}
+
+enum PaymentStatus {
+  PENDING
+  WAITING_VERIFICATION
+  SUCCESS
+  FAILED
+  EXPIRED
+  REJECTED
+  CANCELLED
+}
+
+enum VerificationStatus {
+  APPROVED
+  REJECTED
+}
+
+// =========================================
+// ADMIN USER
+// =========================================
+
+model User {
+  id          String    @id @default(cuid())
+  username    String    @unique
+  fullname    String
+  address     String?
+  phoneNumber String?
+  level       UserLevel @default(ADMIN)
+
+  password Password?
+
+  areas Area[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relasi keuangan
+  verifiedPayments PaymentVerification[]
+  createdPayments  Payment[]             @relation("PaymentCreatedBy")
+  pendapatan       Pendapatan[]
+  pengeluaran      Pengeluaran[]
+  bukuKas          BukuKas[]
+}
+
+model Password {
+  id   String @id @default(cuid())
+  hash String
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String @unique
+}
+
+// =========================================
+// CUSTOMER LOGIN
+// =========================================
+
+model Customer {
+  id          String  @id @default(cuid())
+  username    String  @unique
+  fullname    String
+  email       String? @unique
+  phoneNumber String?
+  address     String?
+
+  ontName    String?
+  redamanOlt String?
+
+  diskon Int @default(0)
+
+  status CustomerStatus @default(PENDING)
+
+  // Relasi jaringan
+  paket   Paket?  @relation(fields: [paketId], references: [id])
+  paketId String?
+
+  area   Area?   @relation(fields: [areaId], references: [id])
+  areaId String?
+
+  odp   Odp?    @relation(fields: [odpId], references: [id])
+  odpId String?
+
+  modem   Modem?  @relation(fields: [modemId], references: [id])
+  modemId String?
+
+  olt   Olt?    @relation(fields: [oltId], references: [id])
+  oltId String?
+
+  // Login customer
+  password CustomerPassword?
+
+  // Billing
+  invoices Invoice[]
+  payments Payment[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([areaId])
+}
+
+model CustomerPassword {
+  id   String @id @default(cuid())
+  hash String
+
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  customerId String   @unique
+}
+
+// =========================================
+// MASTER DATA
+// =========================================
+
+model Paket {
+  id    String @id @default(cuid())
+  name  String
+  harga Int
+
+  customers Customer[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Area {
+  id   String @id @default(cuid())
+  name String
+
+  customers Customer[]
+  odp       Odp[]
+  users     User[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Odp {
+  id             String  @id @default(cuid())
+  name           String
+  rasio          String?
+  passiveSpliter String?
+
+  area   Area?   @relation(fields: [areaId], references: [id])
+  areaId String?
+
+  customers Customer[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Modem {
+  id     String @id @default(cuid())
+  name   String
+  serial String @unique
+
+  customers Customer[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Olt {
+  id       String  @id @default(cuid())
+  name     String
+  location String?
+
+  username String?
+  password String?
+
+  serial String @unique
+
+  customers Customer[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// =========================================
+// INVOICE (TAGIHAN BULANAN)
+// =========================================
+
+model Invoice {
+  id            String @id @default(cuid())
+  invoiceNumber String @unique
+
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  customerId String
+
+  periode DateTime
+  bulan   Int
+  tahun   Int
+
+  subtotal Float
+  diskon   Float @default(0)
+  pajak    Float @default(0)
+  total    Float
+
+  status InvoiceStatus @default(UNPAID)
+
+  dueDate DateTime
+  paidAt  DateTime?
+
+  payments Payment[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([customerId, bulan, tahun])
+  @@index([status])
+  @@index([bulan, tahun])
+}
+
+// =========================================
+// PAYMENT
+// =========================================
+
+model Payment {
+  id String @id @default(cuid())
+
+  invoice   Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  invoiceId String
+
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  customerId String
+
+  amount Float
+
+  method  PaymentMethod
+  gateway PaymentGateway @default(MANUAL)
+
+  status PaymentStatus @default(PENDING)
+
+  // Payment gateway
+  gatewayTransactionId String? @unique
+  paymentCode          String?
+  paymentUrl           String?
+  snapToken            String?
+
+  // Transfer manual
+  bankName      String?
+  accountName   String?
+  accountNumber String?
+  transferAt    DateTime?
+
+  // Waktu pembayaran
+  paidAt    DateTime?
+  expiredAt DateTime?
+
+  // Siapa yang membuat pembayaran (cash oleh admin)
+  createdBy   User?   @relation("PaymentCreatedBy", fields: [createdById], references: [id])
+  createdById String?
+
+  // Upload bukti pembayaran
+  attachments PaymentAttachment[]
+
+  // Verifikasi admin
+  verification PaymentVerification?
+
+  // Pendapatan
+  pendapatan Pendapatan?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([customerId])
+  @@index([invoiceId])
+  @@index([createdAt])
+}
+
+// =========================================
+// FILE BUKTI PEMBAYARAN
+// =========================================
+
+model PaymentAttachment {
+  id String @id @default(cuid())
+
+  payment   Payment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  paymentId String
+
+  originalName String
+  fileName     String
+  mimeType     String
+  extension    String
+  size         Int
+
+  // path file di server / S3 / R2
+  path String
+
+  // URL publik (opsional)
+  url String?
+
+  uploadedAt DateTime @default(now())
+
+  @@index([paymentId])
+}
+
+// =========================================
+// VERIFIKASI PEMBAYARAN MANUAL
+// =========================================
+
+model PaymentVerification {
+  id String @id @default(cuid())
+
+  payment   Payment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  paymentId String  @unique
+
+  verifiedBy   User   @relation(fields: [verifiedById], references: [id])
+  verifiedById String
+
+  status VerificationStatus
+
+  note String?
+
+  createdAt DateTime @default(now())
+
+  @@index([verifiedById])
+}
+
+// =========================================
+// LOG CALLBACK PAYMENT GATEWAY
+// =========================================
+
+model PaymentWebhook {
+  id String @id @default(cuid())
+
+  gateway PaymentGateway
+
+  transactionId String
+
+  payload Json
+
+  createdAt DateTime @default(now())
+
+  @@index([gateway, transactionId])
+}
+
+// =========================================
+// REKENING / QRIS YANG DITAMPILKAN KE CUSTOMER
+// =========================================
+
+model PaymentMethodAccount {
+  id String @id @default(cuid())
+
+  name String
+
+  method PaymentMethod
+
+  bankName String?
+
+  accountName String?
+
+  accountNumber String?
+
+  qrImage String?
+
+  isActive Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// =========================================
+// PENDAPATAN
+// =========================================
+
+model Pendapatan {
+  id String @id @default(cuid())
+
+  payment   Payment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  paymentId String  @unique
+
+  user   User?   @relation(fields: [userId], references: [id])
+  userId String?
+
+  total     Float
+  deskripsi String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  bukuKas BukuKas[] @relation("PendapatanBukuKas")
+}
+
+// =========================================
+// PENGELUARAN
+// =========================================
+
+model Pengeluaran {
+  id String @id @default(cuid())
+
+  user   User   @relation(fields: [userId], references: [id])
+  userId String
+
+  totalKeluar Float
+  deskripsi   String?
+  kategori    String
+
+  tanggal DateTime @default(now())
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  bukuKas   BukuKas? @relation("BukuKasPengeluaran", fields: [bukuKasId], references: [id])
+  bukuKasId String?
+}
+
+// =========================================
+// BUKU KAS
+// =========================================
+
+model BukuKas {
+  id String @id @default(cuid())
+
+  tanggal DateTime @default(now())
+
+  totalMasuk  Float @default(0)
+  totalKeluar Float @default(0)
+  saldoAkhir  Float @default(0)
+
+  deskripsi  String?
+  keterangan String?
+
+  user   User   @relation(fields: [userId], references: [id])
+  userId String
+
+  pendapatan  Pendapatan[]  @relation("PendapatanBukuKas")
+  pengeluaran Pengeluaran[] @relation("BukuKasPengeluaran")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tanggal])
+}
