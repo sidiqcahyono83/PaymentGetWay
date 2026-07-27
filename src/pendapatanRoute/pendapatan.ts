@@ -22,196 +22,274 @@ app.get("/all", checkUserToken(), async (c) => {
   return c.json(pendapatan);
 });
 
-export async function getLastSaldo(
-  prisma: PrismaClient,
-  userId: string
-): Promise<number> {
-  const lastKas = await prisma.bukuKas.findFirst({
+// Helper fungsi untuk mengambil saldo terakhir
+export async function getLastSaldo(tx: any, userId: string): Promise<number> {
+  const lastKas = await tx.bukuKas.findFirst({
     where: { userId },
     orderBy: { createdAt: "desc" },
   });
   return lastKas?.saldoAkhir ?? 0;
 }
 
-// app.post("/", checkUserToken(), async (c) => {
-//   try {
-//     const body = await c.req.json();
+app.post("/", checkUserToken(), async (c) => {
+  try {
+    const body = await c.req.json();
+    const user = c.get("user");
 
-//     const user = c.get("user");
+    if (!user) {
+      return c.json(
+        {
+          success: false,
+          message: "Unauthorized",
+        },
+        401
+      );
+    }
 
-//     if (!user) {
-//       return c.json(
-//         {
-//           success: false,
-//           message: "Unauthorized",
-//         },
-//         401
-//       );
-//     }
+    const { paymentId, deskripsi } = body;
 
-//     const pembayaran = body.pembayaran ?? [];
+    if (!paymentId) {
+      return c.json(
+        {
+          success: false,
+          message: "paymentId wajib diisi.",
+        },
+        400
+      );
+    }
 
-//     if (!Array.isArray(pembayaran) || pembayaran.length === 0) {
-//       return c.json(
-//         {
-//           success: false,
-//           message: "Minimal pilih satu pembayaran.",
-//         },
-//         400
-//       );
-//     }
+    const hasil = await prisma.$transaction(async (tx) => {
+      // 1. Ambil data Payment & validasi
+      const payment = await tx.payment.findUnique({
+        where: { id: paymentId },
+        include: {
+          pendapatan: true,
+          invoice: {
+            include: { customer: true },
+          },
+        },
+      });
 
-//     const pembayaranIds = pembayaran.map((item: any) => item.pembayaranId);
+      if (!payment) {
+        throw new Error("Payment tidak ditemukan.");
+      }
 
-//     const hasil = await prisma.$transaction(async (tx) => {
-//       //----------------------------------------------------
-//       // Ambil pembayaran
-//       //----------------------------------------------------
+      // Pastikan payment sudah sukses/lunas
+      if (payment.status !== "SUCCESS") {
+        throw new Error("Payment belum sukses atau belum diverifikasi.");
+      }
 
-//       const dataPembayaran = await tx.pembayaran.findMany({
-//         where: {
-//           id: {
-//             in: pembayaranIds,
-//           },
-//         },
-//       });
+      // Cek apakah payment sudah pernah dicatat ke Pendapatan
+      if (payment.pendapatan) {
+        throw new Error("Payment ini sudah dicatatkan ke Pendapatan.");
+      }
 
-//       if (dataPembayaran.length !== pembayaranIds.length) {
-//         throw new Error("Ada pembayaran yang tidak ditemukan.");
-//       }
+      // 2. Ambil saldo kas terakhir user
+      const saldoAwal = await getLastSaldo(tx, user.id);
+      const totalPendapatan = payment.amount;
 
-//       //----------------------------------------------------
-//       // Cek sudah masuk pendapatan
-//       //----------------------------------------------------
+      // 3. Buat Record Pendapatan (Relasi 1-to-1 ke Payment)
+      const pendapatan = await tx.pendapatan.create({
+        data: {
+          paymentId: payment.id,
+          userId: user.id,
+          total: totalPendapatan,
+          deskripsi:
+            deskripsi ||
+            `Pendapatan dari Invoice #${payment.invoice.invoiceNumber} - ${payment.invoice.customer.fullname}`,
+        },
+      });
 
-//       const sudahMasuk = dataPembayaran.find(
-//         (item) => item.pendapatanId !== null
-//       );
+      // 4. Cari atau Buat Buku Kas Harian
+      const now = new Date();
+      const todayStart = new Date(now.setHours(0, 0, 0, 0));
+      const todayEnd = new Date(now.setHours(23, 59, 59, 999));
 
-//       if (sudahMasuk) {
-//         throw new Error("Ada pembayaran yang sudah masuk pendapatan.");
-//       }
+      let bukuKas = await tx.bukuKas.findFirst({
+        where: {
+          userId: user.id,
+          tanggal: {
+            gte: todayStart,
+            lte: todayEnd,
+          },
+        },
+      });
 
-//       //----------------------------------------------------
-//       // Hitung total
-//       //----------------------------------------------------
+      if (bukuKas) {
+        // Jika Buku Kas hari ini sudah ada, update totalMasuk & saldoAkhir
+        bukuKas = await tx.bukuKas.update({
+          where: { id: bukuKas.id },
+          data: {
+            totalMasuk: { increment: totalPendapatan },
+            saldoAkhir: { increment: totalPendapatan },
+            pendapatan: {
+              connect: { id: pendapatan.id },
+            },
+          },
+        });
+      } else {
+        // Jika belum ada, buat entri Buku Kas baru untuk hari ini
+        bukuKas = await tx.bukuKas.create({
+          data: {
+            userId: user.id,
+            tanggal: new Date(),
+            totalMasuk: totalPendapatan,
+            totalKeluar: 0,
+            saldoAkhir: saldoAwal + totalPendapatan,
+            deskripsi: "Pencatatan Pendapatan Harian",
+            keterangan: "Pemasukan dari Payment",
+            pendapatan: {
+              connect: { id: pendapatan.id },
+            },
+          },
+        });
+      }
 
-//       const totalMasuk = dataPembayaran.reduce(
-//         (sum, item) => sum + item.totalBayar,
-//         0
-//       );
+      return {
+        pendapatan,
+        bukuKas,
+        totalMasuk: totalPendapatan,
+      };
+    });
 
-//       //----------------------------------------------------
-//       // Saldo terakhir
-//       //----------------------------------------------------
+    return c.json(
+      {
+        success: true,
+        message: "Pendapatan dan Buku Kas berhasil dicatat.",
+        data: hasil,
+      },
+      201
+    );
+  } catch (err: any) {
+    console.error(err);
 
-//       const lastKas = await tx.bukuKas.findFirst({
-//         where: {
-//           userId: user.id,
-//         },
-//         orderBy: {
-//           createdAt: "desc",
-//         },
-//       });
+    return c.json(
+      {
+        success: false,
+        message: err.message || "Terjadi kesalahan pada server.",
+      },
+      400
+    );
+  }
+});
 
-//       const saldoAwal = lastKas?.saldoAkhir ?? 0;
+//--PENDAPATAN MANUALL--//
+app.post("/pendapatan/manual", checkUserToken(), async (c) => {
+  try {
+    const body = await c.req.json();
+    const user = c.get("user");
 
-//       //----------------------------------------------------
-//       // Buat Pendapatan
-//       //----------------------------------------------------
+    if (!user) {
+      return c.json({ success: false, message: "Unauthorized" }, 401);
+    }
 
-//       const pendapatan = await tx.pendapatan.create({
-//         data: {
-//           totalMasuk,
-//           metode: body.metode,
-//           deskripsi: body.deskripsi,
+    const { total, deskripsi } = body;
 
-//           pembayaran: {
-//             connect: pembayaranIds.map((id: string) => ({
-//               id,
-//             })),
-//           },
-//         },
-//       });
+    // Validasi input
+    if (!total || typeof total !== "number" || total <= 0) {
+      return c.json(
+        {
+          success: false,
+          message:
+            "Nominal total pendapatan wajib diisi dan harus bernilai positif.",
+        },
+        400
+      );
+    }
 
-//       //----------------------------------------------------
-//       // Update pembayaran
-//       //----------------------------------------------------
+    if (!deskripsi) {
+      return c.json(
+        {
+          success: false,
+          message: "Deskripsi/Keterangan pendapatan wajib diisi.",
+        },
+        400
+      );
+    }
 
-//       await tx.pembayaran.updateMany({
-//         where: {
-//           id: {
-//             in: pembayaranIds,
-//           },
-//         },
-//         data: {
-//           pendapatanId: pendapatan.id,
-//         },
-//       });
+    const hasil = await prisma.$transaction(async (tx) => {
+      // 1. Ambil saldo kas terakhir user
+      const saldoAwal = await getLastSaldo(tx, user.id);
 
-//       //----------------------------------------------------
-//       // Buat Buku Kas
-//       //----------------------------------------------------
+      // 2. Buat Record Pendapatan tanpa paymentId
+      const pendapatan = await tx.pendapatan.create({
+        data: {
+          userId: user.id,
+          total: total,
+          deskripsi: deskripsi, // contoh: "Pendapatan Pemasangan Baru - Bpk Ahmad"
+        },
+      });
 
-//       const bukuKas = await tx.bukuKas.create({
-//         data: {
-//           userId: user.id,
-//           tanggal: new Date(),
+      // 3. Cari atau Buat Buku Kas Harian
+      const now = new Date();
+      const todayStart = new Date(now.setHours(0, 0, 0, 0));
+      const todayEnd = new Date(now.setHours(23, 59, 59, 999));
 
-//           totalMasuk,
-//           totalKeluar: 0,
+      let bukuKas = await tx.bukuKas.findFirst({
+        where: {
+          userId: user.id,
+          tanggal: {
+            gte: todayStart,
+            lte: todayEnd,
+          },
+        },
+      });
 
-//           saldoAkhir: saldoAwal + totalMasuk,
+      if (bukuKas) {
+        // Update Buku Kas yang sudah ada hari ini
+        bukuKas = await tx.bukuKas.update({
+          where: { id: bukuKas.id },
+          data: {
+            totalMasuk: { increment: total },
+            saldoAkhir: { increment: total },
+            pendapatan: {
+              connect: { id: pendapatan.id },
+            },
+          },
+        });
+      } else {
+        // Buat Buku Kas baru untuk hari ini
+        bukuKas = await tx.bukuKas.create({
+          data: {
+            userId: user.id,
+            tanggal: new Date(),
+            totalMasuk: total,
+            totalKeluar: 0,
+            saldoAkhir: saldoAwal + total,
+            deskripsi: "Pencatatan Pendapatan Harian",
+            keterangan: "Pemasukan Langsung / Non-Invoice",
+            pendapatan: {
+              connect: { id: pendapatan.id },
+            },
+          },
+        });
+      }
 
-//           deskripsi: "Pendapatan",
-//         },
-//       });
+      return {
+        pendapatan,
+        bukuKas,
+      };
+    });
 
-//       //----------------------------------------------------
-//       // Hubungkan BukuKas <-> Pendapatan
-//       //----------------------------------------------------
-
-//       await tx.pendapatan.update({
-//         where: {
-//           id: pendapatan.id,
-//         },
-//         data: {
-//           bukuKas: {
-//             connect: {
-//               id: bukuKas.id,
-//             },
-//           },
-//         },
-//       });
-
-//       return {
-//         pendapatan,
-//         bukuKas,
-//         totalMasuk,
-//         totalCustomer: dataPembayaran.length,
-//       };
-//     });
-
-//     return c.json(
-//       {
-//         success: true,
-//         message: "Pendapatan berhasil dibuat.",
-//         data: hasil,
-//       },
-//       201
-//     );
-//   } catch (err: any) {
-//     console.error(err);
-
-//     return c.json(
-//       {
-//         success: false,
-//         message: err.message,
-//       },
-//       400
-//     );
-//   }
-// });
+    return c.json(
+      {
+        success: true,
+        message: "Pendapatan manual berhasil dicatat.",
+        data: hasil,
+      },
+      201
+    );
+  } catch (err: any) {
+    console.error(err);
+    return c.json(
+      {
+        success: false,
+        message: err.message || "Terjadi kesalahan pada server.",
+      },
+      400
+    );
+  }
+});
 
 //GET /pendapatan?page=1&limit=10&search=name
 // app.get("/", checkUserToken(), async (c) => {
