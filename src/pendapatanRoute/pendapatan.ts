@@ -17,23 +17,14 @@ type Variables = {
 };
 
 app.get("/all", checkUserToken(), async (c) => {
-  const pendapatan = await prisma.pendapatan.findMany({
-    include: {
-      pembayaran: {
-        include: {
-          customer: true,
-          user: true,
-        },
-      },
-    },
-  });
+  const pendapatan = await prisma.pendapatan.findMany({});
 
   return c.json(pendapatan);
 });
 
 export async function getLastSaldo(
   prisma: PrismaClient,
-  userId: string,
+  userId: string
 ): Promise<number> {
   const lastKas = await prisma.bukuKas.findFirst({
     where: { userId },
@@ -42,364 +33,364 @@ export async function getLastSaldo(
   return lastKas?.saldoAkhir ?? 0;
 }
 
-app.post("/", checkUserToken(), async (c) => {
-  try {
-    const body = await c.req.json();
+// app.post("/", checkUserToken(), async (c) => {
+//   try {
+//     const body = await c.req.json();
 
-    const user = c.get("user");
+//     const user = c.get("user");
 
-    if (!user) {
-      return c.json(
-        {
-          success: false,
-          message: "Unauthorized",
-        },
-        401,
-      );
-    }
+//     if (!user) {
+//       return c.json(
+//         {
+//           success: false,
+//           message: "Unauthorized",
+//         },
+//         401
+//       );
+//     }
 
-    const pembayaran = body.pembayaran ?? [];
+//     const pembayaran = body.pembayaran ?? [];
 
-    if (!Array.isArray(pembayaran) || pembayaran.length === 0) {
-      return c.json(
-        {
-          success: false,
-          message: "Minimal pilih satu pembayaran.",
-        },
-        400,
-      );
-    }
+//     if (!Array.isArray(pembayaran) || pembayaran.length === 0) {
+//       return c.json(
+//         {
+//           success: false,
+//           message: "Minimal pilih satu pembayaran.",
+//         },
+//         400
+//       );
+//     }
 
-    const pembayaranIds = pembayaran.map((item: any) => item.pembayaranId);
+//     const pembayaranIds = pembayaran.map((item: any) => item.pembayaranId);
 
-    const hasil = await prisma.$transaction(async (tx) => {
-      //----------------------------------------------------
-      // Ambil pembayaran
-      //----------------------------------------------------
+//     const hasil = await prisma.$transaction(async (tx) => {
+//       //----------------------------------------------------
+//       // Ambil pembayaran
+//       //----------------------------------------------------
 
-      const dataPembayaran = await tx.pembayaran.findMany({
-        where: {
-          id: {
-            in: pembayaranIds,
-          },
-        },
-      });
+//       const dataPembayaran = await tx.pembayaran.findMany({
+//         where: {
+//           id: {
+//             in: pembayaranIds,
+//           },
+//         },
+//       });
 
-      if (dataPembayaran.length !== pembayaranIds.length) {
-        throw new Error("Ada pembayaran yang tidak ditemukan.");
-      }
+//       if (dataPembayaran.length !== pembayaranIds.length) {
+//         throw new Error("Ada pembayaran yang tidak ditemukan.");
+//       }
 
-      //----------------------------------------------------
-      // Cek sudah masuk pendapatan
-      //----------------------------------------------------
+//       //----------------------------------------------------
+//       // Cek sudah masuk pendapatan
+//       //----------------------------------------------------
 
-      const sudahMasuk = dataPembayaran.find(
-        (item) => item.pendapatanId !== null,
-      );
+//       const sudahMasuk = dataPembayaran.find(
+//         (item) => item.pendapatanId !== null
+//       );
 
-      if (sudahMasuk) {
-        throw new Error("Ada pembayaran yang sudah masuk pendapatan.");
-      }
+//       if (sudahMasuk) {
+//         throw new Error("Ada pembayaran yang sudah masuk pendapatan.");
+//       }
 
-      //----------------------------------------------------
-      // Hitung total
-      //----------------------------------------------------
+//       //----------------------------------------------------
+//       // Hitung total
+//       //----------------------------------------------------
 
-      const totalMasuk = dataPembayaran.reduce(
-        (sum, item) => sum + item.totalBayar,
-        0,
-      );
+//       const totalMasuk = dataPembayaran.reduce(
+//         (sum, item) => sum + item.totalBayar,
+//         0
+//       );
 
-      //----------------------------------------------------
-      // Saldo terakhir
-      //----------------------------------------------------
+//       //----------------------------------------------------
+//       // Saldo terakhir
+//       //----------------------------------------------------
 
-      const lastKas = await tx.bukuKas.findFirst({
-        where: {
-          userId: user.id,
-        },
-        orderBy: {
-          createdAt: "desc",
-        },
-      });
+//       const lastKas = await tx.bukuKas.findFirst({
+//         where: {
+//           userId: user.id,
+//         },
+//         orderBy: {
+//           createdAt: "desc",
+//         },
+//       });
 
-      const saldoAwal = lastKas?.saldoAkhir ?? 0;
+//       const saldoAwal = lastKas?.saldoAkhir ?? 0;
 
-      //----------------------------------------------------
-      // Buat Pendapatan
-      //----------------------------------------------------
+//       //----------------------------------------------------
+//       // Buat Pendapatan
+//       //----------------------------------------------------
 
-      const pendapatan = await tx.pendapatan.create({
-        data: {
-          totalMasuk,
-          metode: body.metode,
-          deskripsi: body.deskripsi,
+//       const pendapatan = await tx.pendapatan.create({
+//         data: {
+//           totalMasuk,
+//           metode: body.metode,
+//           deskripsi: body.deskripsi,
 
-          pembayaran: {
-            connect: pembayaranIds.map((id: string) => ({
-              id,
-            })),
-          },
-        },
-      });
+//           pembayaran: {
+//             connect: pembayaranIds.map((id: string) => ({
+//               id,
+//             })),
+//           },
+//         },
+//       });
 
-      //----------------------------------------------------
-      // Update pembayaran
-      //----------------------------------------------------
+//       //----------------------------------------------------
+//       // Update pembayaran
+//       //----------------------------------------------------
 
-      await tx.pembayaran.updateMany({
-        where: {
-          id: {
-            in: pembayaranIds,
-          },
-        },
-        data: {
-          pendapatanId: pendapatan.id,
-        },
-      });
+//       await tx.pembayaran.updateMany({
+//         where: {
+//           id: {
+//             in: pembayaranIds,
+//           },
+//         },
+//         data: {
+//           pendapatanId: pendapatan.id,
+//         },
+//       });
 
-      //----------------------------------------------------
-      // Buat Buku Kas
-      //----------------------------------------------------
+//       //----------------------------------------------------
+//       // Buat Buku Kas
+//       //----------------------------------------------------
 
-      const bukuKas = await tx.bukuKas.create({
-        data: {
-          userId: user.id,
-          tanggal: new Date(),
+//       const bukuKas = await tx.bukuKas.create({
+//         data: {
+//           userId: user.id,
+//           tanggal: new Date(),
 
-          totalMasuk,
-          totalKeluar: 0,
+//           totalMasuk,
+//           totalKeluar: 0,
 
-          saldoAkhir: saldoAwal + totalMasuk,
+//           saldoAkhir: saldoAwal + totalMasuk,
 
-          deskripsi: "Pendapatan",
-        },
-      });
+//           deskripsi: "Pendapatan",
+//         },
+//       });
 
-      //----------------------------------------------------
-      // Hubungkan BukuKas <-> Pendapatan
-      //----------------------------------------------------
+//       //----------------------------------------------------
+//       // Hubungkan BukuKas <-> Pendapatan
+//       //----------------------------------------------------
 
-      await tx.pendapatan.update({
-        where: {
-          id: pendapatan.id,
-        },
-        data: {
-          bukuKas: {
-            connect: {
-              id: bukuKas.id,
-            },
-          },
-        },
-      });
+//       await tx.pendapatan.update({
+//         where: {
+//           id: pendapatan.id,
+//         },
+//         data: {
+//           bukuKas: {
+//             connect: {
+//               id: bukuKas.id,
+//             },
+//           },
+//         },
+//       });
 
-      return {
-        pendapatan,
-        bukuKas,
-        totalMasuk,
-        totalCustomer: dataPembayaran.length,
-      };
-    });
+//       return {
+//         pendapatan,
+//         bukuKas,
+//         totalMasuk,
+//         totalCustomer: dataPembayaran.length,
+//       };
+//     });
 
-    return c.json(
-      {
-        success: true,
-        message: "Pendapatan berhasil dibuat.",
-        data: hasil,
-      },
-      201,
-    );
-  } catch (err: any) {
-    console.error(err);
+//     return c.json(
+//       {
+//         success: true,
+//         message: "Pendapatan berhasil dibuat.",
+//         data: hasil,
+//       },
+//       201
+//     );
+//   } catch (err: any) {
+//     console.error(err);
 
-    return c.json(
-      {
-        success: false,
-        message: err.message,
-      },
-      400,
-    );
-  }
-});
+//     return c.json(
+//       {
+//         success: false,
+//         message: err.message,
+//       },
+//       400
+//     );
+//   }
+// });
 
 //GET /pendapatan?page=1&limit=10&search=name
-app.get("/", checkUserToken(), async (c) => {
-  try {
-    const page = Number(c.req.query("page") ?? 1);
-    const limit = Number(c.req.query("limit") ?? 10);
-    const search = c.req.query("search") ?? "";
+// app.get("/", checkUserToken(), async (c) => {
+//   try {
+//     const page = Number(c.req.query("page") ?? 1);
+//     const limit = Number(c.req.query("limit") ?? 10);
+//     const search = c.req.query("search") ?? "";
 
-    const bulan = c.req.query("bulan");
-    const tahun = c.req.query("tahun");
-    const metode = c.req.query("metode");
+//     const bulan = c.req.query("bulan");
+//     const tahun = c.req.query("tahun");
+//     const metode = c.req.query("metode");
 
-    const tanggalAwal = c.req.query("tanggalAwal");
-    const tanggalAkhir = c.req.query("tanggalAkhir");
+//     const tanggalAwal = c.req.query("tanggalAwal");
+//     const tanggalAkhir = c.req.query("tanggalAkhir");
 
-    const skip = (page - 1) * limit;
+//     const skip = (page - 1) * limit;
 
-    const where: Prisma.PendapatanWhereInput = {};
+//     const where: Prisma.PendapatanWhereInput = {};
 
-    /**
-     * Search
-     */
+//     /**
+//      * Search
+//      */
 
-    if (search) {
-      where.pembayaran = {
-        some: {
-          OR: [
-            {
-              customer: {
-                fullname: {
-                  contains: search,
-                },
-              },
-            },
-            {
-              customer: {
-                username: {
-                  contains: search,
-                },
-              },
-            },
-            {
-              customer: {
-                phonenumber: {
-                  contains: search,
-                },
-              },
-            },
-            {
-              metode: {
-                contains: search,
-              },
-            },
-          ],
-        },
-      };
-    }
+//     if (search) {
+//       where.pembayaran = {
+//         some: {
+//           OR: [
+//             {
+//               customer: {
+//                 fullname: {
+//                   contains: search,
+//                 },
+//               },
+//             },
+//             {
+//               customer: {
+//                 username: {
+//                   contains: search,
+//                 },
+//               },
+//             },
+//             {
+//               customer: {
+//                 phonenumber: {
+//                   contains: search,
+//                 },
+//               },
+//             },
+//             {
+//               metode: {
+//                 contains: search,
+//               },
+//             },
+//           ],
+//         },
+//       };
+//     }
 
-    /**
-     * Metode
-     */
+//     /**
+//      * Metode
+//      */
 
-    if (metode) {
-      where.metode = metode;
-    }
+//     if (metode) {
+//       where.metode = metode;
+//     }
 
-    /**
-     * Bulan + Tahun
-     */
+//     /**
+//      * Bulan + Tahun
+//      */
 
-    if (bulan && tahun) {
-      const start = new Date(Number(tahun), Number(bulan) - 1, 1);
+//     if (bulan && tahun) {
+//       const start = new Date(Number(tahun), Number(bulan) - 1, 1);
 
-      const end = new Date(Number(tahun), Number(bulan), 1);
+//       const end = new Date(Number(tahun), Number(bulan), 1);
 
-      where.createdAt = {
-        gte: start,
-        lt: end,
-      };
-    }
+//       where.createdAt = {
+//         gte: start,
+//         lt: end,
+//       };
+//     }
 
-    /**
-     * Rentang tanggal
-     */
+//     /**
+//      * Rentang tanggal
+//      */
 
-    if (tanggalAwal || tanggalAkhir) {
-      where.createdAt = {
-        ...(tanggalAwal && {
-          gte: new Date(tanggalAwal),
-        }),
+//     if (tanggalAwal || tanggalAkhir) {
+//       where.createdAt = {
+//         ...(tanggalAwal && {
+//           gte: new Date(tanggalAwal),
+//         }),
 
-        ...(tanggalAkhir && {
-          lte: new Date(tanggalAkhir),
-        }),
-      };
-    }
+//         ...(tanggalAkhir && {
+//           lte: new Date(tanggalAkhir),
+//         }),
+//       };
+//     }
 
-    const [total, pendapatan] = await prisma.$transaction([
-      prisma.pendapatan.count({
-        where,
-      }),
+//     const [total, pendapatan] = await prisma.$transaction([
+//       prisma.pendapatan.count({
+//         where,
+//       }),
 
-      prisma.pendapatan.findMany({
-        where,
+//       prisma.pendapatan.findMany({
+//         where,
 
-        include: {
-          _count: {
-            select: {
-              pembayaran: true,
-            },
-          },
-          pembayaran: {
-            include: {
-              customer: true,
-              user: true,
-            },
-          },
-        },
+//         include: {
+//           _count: {
+//             select: {
+//               pembayaran: true,
+//             },
+//           },
+//           pembayaran: {
+//             include: {
+//               customer: true,
+//               user: true,
+//             },
+//           },
+//         },
 
-        orderBy: {
-          createdAt: "desc",
-        },
+//         orderBy: {
+//           createdAt: "desc",
+//         },
 
-        skip,
+//         skip,
 
-        take: limit,
-      }),
-    ]);
+//         take: limit,
+//       }),
+//     ]);
 
-    return c.json({
-      success: true,
-      message: "Data pendapatan berhasil diambil.",
+//     return c.json({
+//       success: true,
+//       message: "Data pendapatan berhasil diambil.",
 
-      data: pendapatan,
+//       data: pendapatan,
 
-      pagination: {
-        page,
-        limit,
-        total,
-        totalPages: Math.ceil(total / limit),
-      },
-    });
-  } catch (error) {
-    console.error(error);
+//       pagination: {
+//         page,
+//         limit,
+//         total,
+//         totalPages: Math.ceil(total / limit),
+//       },
+//     });
+//   } catch (error) {
+//     console.error(error);
 
-    return c.json(
-      {
-        success: false,
-        message: "Gagal mengambil data pendapatan.",
-      },
-      500,
-    );
-  }
-});
+//     return c.json(
+//       {
+//         success: false,
+//         message: "Gagal mengambil data pendapatan.",
+//       },
+//       500
+//     );
+//   }
+// });
 
-app.get("/:id", checkUserToken(), async (c) => {
-  const id = c.req.param("id");
-  try {
-    const res = await prisma.pendapatan.findUnique({
-      where: { id },
-      include: {
-        pembayaran: {
-          select: {
-            customer: true,
-            user: true,
-          },
-        },
-        _count: {
-          select: {
-            pembayaran: true,
-          },
-        },
-      },
-    });
-    const data = c.json(res);
-    return data;
-  } catch (error) {
-    console.error(error);
-  }
-});
+// app.get("/:id", checkUserToken(), async (c) => {
+//   const id = c.req.param("id");
+//   try {
+//     const res = await prisma.pendapatan.findUnique({
+//       where: { id },
+//       include: {
+//         pembayaran: {
+//           select: {
+//             customer: true,
+//             user: true,
+//           },
+//         },
+//         _count: {
+//           select: {
+//             pembayaran: true,
+//           },
+//         },
+//       },
+//     });
+//     const data = c.json(res);
+//     return data;
+//   } catch (error) {
+//     console.error(error);
+//   }
+// });
 
 export default app;

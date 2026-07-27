@@ -1,16 +1,24 @@
 import { Hono } from "hono";
 import { checkUserToken } from "../midleware/cekUserToken";
 import { prisma } from "../../lib/prisma";
+import { existsSync, mkdirSync, unlinkSync } from "node:fs";
 import {
   PaymentMethod,
   InvoiceStatus,
   PaymentStatus,
   VerificationStatus,
+  CustomerStatus,
 } from "../../generated/prisma/client";
 
 const app = new Hono();
 
 // POST /payment/manual
+/* body json
+{
+  "invoiceId": "clx_invoice_id_kamu_disini",
+  "method": "CASH"
+}
+*/
 app.post("/", checkUserToken(), async (c) => {
   try {
     const user = c.get("user");
@@ -22,7 +30,7 @@ app.post("/", checkUserToken(), async (c) => {
           success: false,
           message: "invoiceId dan method wajib diisi.",
         },
-        400,
+        400
       );
     }
 
@@ -33,7 +41,7 @@ app.post("/", checkUserToken(), async (c) => {
           success: false,
           message: "Metode pembayaran tidak valid.",
         },
-        400,
+        400
       );
     }
 
@@ -52,7 +60,7 @@ app.post("/", checkUserToken(), async (c) => {
           success: false,
           message: "Invoice tidak ditemukan.",
         },
-        404,
+        404
       );
     }
 
@@ -62,7 +70,7 @@ app.post("/", checkUserToken(), async (c) => {
           success: false,
           message: "Invoice sudah dibayar.",
         },
-        400,
+        400
       );
     }
 
@@ -81,46 +89,119 @@ app.post("/", checkUserToken(), async (c) => {
           success: false,
           message: "Masih ada pembayaran yang diproses.",
         },
-        400,
+        400
       );
     }
 
+    const isCash = method === PaymentMethod.CASH;
+    const now = new Date();
+
     const payment = await prisma.$transaction(async (tx) => {
-      const payment = await tx.payment.create({
+      // 1. Buat Payment
+      const newPayment = await tx.payment.create({
         data: {
           invoiceId,
           customerId: invoice.customerId,
           amount: invoice.total,
           method,
           gateway: "MANUAL",
-          status: method === PaymentMethod.CASH ? "SUCCESS" : "PENDING",
-          paidAt: method === PaymentMethod.CASH ? new Date() : null,
+          status: isCash ? PaymentStatus.SUCCESS : PaymentStatus.PENDING,
+          paidAt: isCash ? now : null,
           createdById: user.id,
         },
       });
 
-      if (method === PaymentMethod.CASH) {
+      // 2. Jika pembayaran CASH (langsung Lunas)
+      if (isCash) {
+        // A. Update status Invoice -> PAID
         await tx.invoice.update({
-          where: {
-            id: invoice.id,
-          },
+          where: { id: invoice.id },
           data: {
-            status: "PAID",
-            paidAt: new Date(),
+            status: InvoiceStatus.PAID,
+            paidAt: now,
           },
         });
+
+        // B. Buat record Pendapatan
+        const newPendapatan = await tx.pendapatan.create({
+          data: {
+            paymentId: newPayment.id,
+            userId: user.id,
+            total: invoice.total,
+            deskripsi: `Pembayaran Cash Invoice #${invoice.invoiceNumber} - ${invoice.customer.fullname}`,
+          },
+        });
+
+        // C. Cari BukuKas hari ini (atau buat baru jika belum ada)
+        const todayStart = new Date(now.setHours(0, 0, 0, 0));
+        const todayEnd = new Date(now.setHours(23, 59, 59, 999));
+
+        let bukuKas = await tx.bukuKas.findFirst({
+          where: {
+            tanggal: {
+              gte: todayStart,
+              lte: todayEnd,
+            },
+          },
+        });
+
+        if (bukuKas) {
+          // Update totalMasuk & saldoAkhir BukuKas yang sudah ada
+          await tx.bukuKas.update({
+            where: { id: bukuKas.id },
+            data: {
+              totalMasuk: { increment: invoice.total },
+              saldoAkhir: { increment: invoice.total },
+              pendapatan: {
+                connect: { id: newPendapatan.id },
+              },
+            },
+          });
+        } else {
+          // Ambil saldoAkhir dari hari sebelumnya (jika ada) untuk kontinuitas saldo
+          const lastBukuKas = await tx.bukuKas.findFirst({
+            orderBy: { tanggal: "desc" },
+          });
+          const previousSaldo = lastBukuKas ? lastBukuKas.saldoAkhir : 0;
+
+          // Buat record BukuKas baru untuk hari ini
+          await tx.bukuKas.create({
+            data: {
+              tanggal: new Date(),
+              totalMasuk: invoice.total,
+              totalKeluar: 0,
+              saldoAkhir: previousSaldo + invoice.total,
+              deskripsi: "Buku Kas Harian",
+              keterangan: "Pencatatan Pemasukan Otomatis",
+              userId: user.id,
+              pendapatan: {
+                connect: { id: newPendapatan.id },
+              },
+            },
+          });
+        }
+
+        // D. Update status customer menjadi ACTIVE (jika sebelumnya SUSPENDED/PENDING)
+        if (invoice.customer.status !== CustomerStatus.ACTIVE) {
+          await tx.customer.update({
+            where: { id: invoice.customerId },
+            data: { status: CustomerStatus.ACTIVE },
+          });
+        }
       }
 
-      return payment;
+      return newPayment;
     });
 
     return c.json(
       {
         success: true,
-        message: "Pembayaran berhasil dibuat.",
+        message: isCash
+          ? "Pembayaran cash berhasil & tercatat di Buku Kas."
+          : "Pembayaran berhasil dibuat (menunggu pembayaran).",
         data: payment,
       },
-      201,
+      201
     );
   } catch (err) {
     console.error(err);
@@ -130,34 +211,72 @@ app.post("/", checkUserToken(), async (c) => {
         success: false,
         message: "Terjadi kesalahan pada server.",
       },
-      500,
+      500
     );
   }
 });
 
 //POST /payment/ :id /attachment
+/*Multy-part-form
+Tab Body (form-data)
+Pilih tab Body -> centang form-data.
+
+Pada kolom Key, ketik file.
+
+Arahkan kursor ke ujung kanan input file, ganti tipe kolom dari Text menjadi File.
+
+Pada kolom Value, klik Select Files dan pilih berkas gambar/PDF bukti transfer dari komputer kamu.
+ */
 app.post("/:id/attachment", checkUserToken(), async (c) => {
+  let savedPath: string | null = null;
+
   try {
     const paymentId = c.req.param("id");
-
     const body = await c.req.parseBody();
-
     const file = body.file;
 
+    // 1. Validasi keberadaan file
     if (!(file instanceof File)) {
       return c.json(
         {
           success: false,
           message: "File wajib diupload.",
         },
-        400,
+        400
       );
     }
 
+    // 2. Validasi Tipe & Ukuran File (Maksimal 5MB)
+    const allowedMimeTypes = [
+      "image/jpeg",
+      "image/jpg",
+      "image/png",
+      "application/pdf",
+    ];
+    if (!allowedMimeTypes.includes(file.type)) {
+      return c.json(
+        {
+          success: false,
+          message: "Format file harus berupa JPG, PNG, atau PDF.",
+        },
+        400
+      );
+    }
+
+    const MAX_SIZE = 3 * 1024 * 1024; // 5 MB
+    if (file.size > MAX_SIZE) {
+      return c.json(
+        {
+          success: false,
+          message: "Ukuran file maksimal 5MB.",
+        },
+        400
+      );
+    }
+
+    // 3. Cek keberadaan & status Payment
     const payment = await prisma.payment.findUnique({
-      where: {
-        id: paymentId,
-      },
+      where: { id: paymentId },
     });
 
     if (!payment) {
@@ -166,7 +285,7 @@ app.post("/:id/attachment", checkUserToken(), async (c) => {
           success: false,
           message: "Payment tidak ditemukan.",
         },
-        404,
+        404
       );
     }
 
@@ -174,50 +293,44 @@ app.post("/:id/attachment", checkUserToken(), async (c) => {
       return c.json(
         {
           success: false,
-          message: "Payment tidak dapat diupload.",
+          message: "Payment tidak dalam status PENDING.",
         },
-        400,
+        400
       );
     }
 
-    /**
-     * Simpan file
-     *
-     * nanti kita buat helper uploadFile()
-     */
+    // 4. Pastikan folder tujuan ada
+    const uploadDir = "uploads/payment";
+    if (!existsSync(uploadDir)) {
+      mkdirSync(uploadDir, { recursive: true });
+    }
 
-    const fileName = crypto.randomUUID() + "-" + file.name;
+    const fileExtension = file.name.split(".").pop() ?? "";
+    const fileName = `${crypto.randomUUID()}-${Date.now()}.${fileExtension}`;
+    savedPath = `${uploadDir}/${fileName}`;
 
-    const path = `uploads/payment/${fileName}`;
+    // 5. Simpan file fisik ke disk
+    await Bun.write(savedPath, file);
 
-    await Bun.write(path, file);
-
+    // 6. Transaksi DB
     await prisma.$transaction(async (tx) => {
       await tx.paymentAttachment.create({
         data: {
           paymentId,
-
           originalName: file.name,
-
           fileName,
-
           mimeType: file.type,
-
-          extension: file.name.split(".").pop() ?? "",
-
+          extension: fileExtension,
           size: file.size,
-
-          path,
+          path: savedPath!,
+          url: `/uploads/payment/${fileName}`, // URL publik
         },
       });
 
       await tx.payment.update({
-        where: {
-          id: paymentId,
-        },
+        where: { id: paymentId },
         data: {
           status: "WAITING_VERIFICATION",
-
           transferAt: new Date(),
         },
       });
@@ -225,17 +338,26 @@ app.post("/:id/attachment", checkUserToken(), async (c) => {
 
     return c.json({
       success: true,
-
       message: "Bukti transfer berhasil diupload.",
     });
   } catch (err) {
+    // Hapus file yang sempat tersimpan jika terjadi error DB
+    if (savedPath && existsSync(savedPath)) {
+      try {
+        unlinkSync(savedPath);
+      } catch (cleanupErr) {
+        console.error("Gagal menghapus file orphan:", cleanupErr);
+      }
+    }
+
     console.error(err);
 
     return c.json(
       {
         success: false,
+        message: "Terjadi kesalahan pada server saat mengunggah berkas.",
       },
-      500,
+      500
     );
   }
 });
@@ -258,7 +380,7 @@ app.patch("/:id/verify", checkUserToken(), async (c) => {
           success: false,
           message: "Status verifikasi tidak valid.",
         },
-        400,
+        400
       );
     }
 
@@ -278,7 +400,7 @@ app.patch("/:id/verify", checkUserToken(), async (c) => {
           success: false,
           message: "Payment tidak ditemukan.",
         },
-        404,
+        404
       );
     }
 
@@ -288,7 +410,7 @@ app.patch("/:id/verify", checkUserToken(), async (c) => {
           success: false,
           message: "Payment tidak menunggu verifikasi.",
         },
-        400,
+        400
       );
     }
 
@@ -395,7 +517,7 @@ app.patch("/:id/verify", checkUserToken(), async (c) => {
         success: false,
         message: "Terjadi kesalahan pada server.",
       },
-      500,
+      500
     );
   }
 });
