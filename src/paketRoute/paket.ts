@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { prisma } from "../../lib/prisma";
 import { checkUserToken } from "../midleware/cekUserToken";
+import { paket } from "./pakets";
 
 const app = new Hono();
 
@@ -40,6 +41,34 @@ app.post("/", checkUserToken(), async (c) => {
   } catch (error) {
     console.error(error);
     return c.json({ message: "Failed to create paket." }, 500);
+  }
+});
+
+//CREATE-MANY--//
+app.post("/seed-paket", async (c) => {
+  try {
+    // Formatting tanggal dari ISO string ke Object Date JS
+    const formattedData = paket.map((item) => ({
+      id: item.id,
+      name: item.name,
+      harga: item.harga,
+    }));
+
+    const result = await prisma.paket.createMany({
+      data: formattedData,
+      skipDuplicates: true, // Biar tidak error kalau ID sudah pernah di-insert
+    });
+
+    return c.json(
+      {
+        message: "Default paket inserted successfully.",
+        count: result.count,
+      },
+      201
+    );
+  } catch (error) {
+    console.error(error);
+    return c.json({ message: "Failed to insert default areas." }, 500);
   }
 });
 
@@ -150,7 +179,7 @@ app.get("/", checkUserToken(), async (c) => {
         success: false,
         message: "Gagal mengambil data pembayaran.",
       },
-      500,
+      500
     );
   }
 });

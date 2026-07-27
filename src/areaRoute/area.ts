@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { prisma } from "../../lib/prisma";
 import { checkUserToken } from "../midleware/cekUserToken";
+import { defaultAreas } from "./ar";
 
 export const app = new Hono();
 
@@ -43,6 +44,35 @@ app.post("/", async (c) => {
   } catch (error) {
     console.error(error);
     return c.json({ message: "Failed to create area." }, 500);
+  }
+});
+
+//CREATE-MANY--//
+app.post("/seed-areas", async (c) => {
+  try {
+    // Formatting tanggal dari ISO string ke Object Date JS
+    const formattedData = defaultAreas.map((item) => ({
+      id: item.id,
+      name: item.name,
+      createdAt: new Date(item.createdAt),
+      updatedAt: new Date(item.updatedAt),
+    }));
+
+    const result = await prisma.area.createMany({
+      data: formattedData,
+      skipDuplicates: true, // Biar tidak error kalau ID sudah pernah di-insert
+    });
+
+    return c.json(
+      {
+        message: "Default areas inserted successfully.",
+        count: result.count,
+      },
+      201
+    );
+  } catch (error) {
+    console.error(error);
+    return c.json({ message: "Failed to insert default areas." }, 500);
   }
 });
 
@@ -156,7 +186,7 @@ app.get("/", checkUserToken(), async (c) => {
         success: false,
         message: "Gagal mengambil data pembayaran.",
       },
-      500,
+      500
     );
   }
 });

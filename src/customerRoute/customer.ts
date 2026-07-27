@@ -6,38 +6,30 @@ import { CustomerStatus } from "../../generated/prisma/client";
 import { checkUserToken } from "../midleware/cekUserToken";
 import { hashPassword } from "../../lib/password";
 import { checkCustomerToken } from "../midleware/checkCustomerToken";
+import { data } from "./cus";
 
 export const app = new Hono();
 
 app.get("/all", checkUserToken(), async (c) => {
   try {
     const customers = await prisma.customer.findMany({
-      include: {
-        paket: {
-          select: {
-            name: true,
-            harga: true,
-          },
-        },
-        area: {
-          select: {
-            name: true,
-          },
-        },
-        odp: {
-          select: {
-            name: true,
-          },
-        },
-        modem: {
-          select: {
-            name: true,
-            serial: true,
-          },
-        },
+      select: {
+        id: true,
+        username: true,
+        fullname: true,
+        address: true,
+        phoneNumber: true,
+        ontName: true,
+        redamanOlt: true,
+        diskon: true,
 
-        invoices: true,
-        payments: true,
+        status: true,
+
+        paketId: true,
+        areaId: true,
+        odpId: true,
+        modemId: true,
+        oltId: true,
       },
     });
 
@@ -146,7 +138,7 @@ app.post("/", async (c) => {
         message: "Customer berhasil ditambahkan.",
         data: customer,
       },
-      201,
+      201
     );
   } catch (error: any) {
     console.error(error);
@@ -158,7 +150,7 @@ app.post("/", async (c) => {
           message: "Validasi gagal.",
           errors: error.flatten(),
         },
-        400,
+        400
       );
     }
 
@@ -168,7 +160,7 @@ app.post("/", async (c) => {
           success: false,
           message: "Username sudah digunakan.",
         },
-        409,
+        409
       );
     }
 
@@ -178,7 +170,7 @@ app.post("/", async (c) => {
           success: false,
           message: "Email sudah digunakan.",
         },
-        409,
+        409
       );
     }
 
@@ -187,7 +179,7 @@ app.post("/", async (c) => {
         success: false,
         message: "Terjadi kesalahan pada server.",
       },
-      500,
+      500
     );
   }
 });
@@ -213,7 +205,7 @@ app.post("/register", async (c) => {
           success: false,
           message: "Username wajib diisi",
         },
-        400,
+        400
       );
     }
 
@@ -223,7 +215,7 @@ app.post("/register", async (c) => {
           success: false,
           message: "Password PPPoE wajib diisi",
         },
-        400,
+        400
       );
     }
 
@@ -233,7 +225,7 @@ app.post("/register", async (c) => {
           success: false,
           message: "Profile PPPoE wajib dipilih",
         },
-        400,
+        400
       );
     }
 
@@ -261,7 +253,7 @@ app.post("/register", async (c) => {
           success: false,
           message: pppData.message ?? "Gagal membuat user PPPoE",
         },
-        400,
+        400
       );
     }
 
@@ -302,7 +294,7 @@ app.post("/register", async (c) => {
         customer,
         pppoe: pppData,
       },
-      201,
+      201
     );
   } catch (error: any) {
     console.error(error);
@@ -313,7 +305,7 @@ app.post("/register", async (c) => {
           success: false,
           message: "Username sudah digunakan.",
         },
-        400,
+        400
       );
     }
 
@@ -322,7 +314,7 @@ app.post("/register", async (c) => {
         success: false,
         message: "Gagal menambahkan customer.",
       },
-      500,
+      500
     );
   }
 });
@@ -339,7 +331,7 @@ app.patch("/:id", async (c) => {
           success: false,
           message: "Data yang dikirim kosong.",
         },
-        400,
+        400
       );
     }
     // Cek customer
@@ -355,7 +347,7 @@ app.patch("/:id", async (c) => {
           success: false,
           message: "Customer tidak ditemukan.",
         },
-        404,
+        404
       );
     }
 
@@ -444,7 +436,7 @@ app.patch("/:id", async (c) => {
           success: false,
           message: "Username sudah digunakan.",
         },
-        400,
+        400
       );
     }
 
@@ -453,7 +445,7 @@ app.patch("/:id", async (c) => {
         success: false,
         message: "Gagal memperbarui customer.",
       },
-      500,
+      500
     );
   }
 });
@@ -510,4 +502,49 @@ app.get("/", checkCustomerToken(), async (c) => {
   });
 });
 
+//---CREATE-MANY--//
+app.post("/seed-customer", async (c) => {
+  try {
+    // Formatting tanggal dari ISO string ke Object Date JS
+    const formattedData = data.map((item) => ({
+      id: item.id,
+      username: item.username,
+      fullname: item.fullname,
+      email: item.email,
+      phoneNumber: item.phoneNumber,
+      address: item.address,
+
+      ontName: item.ontName,
+      redamanOlt: item.redamanOlt,
+
+      diskon: item.diskon,
+      status: item.status,
+
+      paketId: item.paketId,
+      areaId: item.areaId,
+      odpId: item.odpId,
+      modemId: item.modemId,
+      oltId: item.oltId,
+
+      createdAt: item.createdAt,
+      updatedAt: item.updatedAt,
+    }));
+
+    const result = await prisma.customer.createMany({
+      data: formattedData,
+      skipDuplicates: true, // Biar tidak error kalau ID sudah pernah di-insert
+    });
+
+    return c.json(
+      {
+        message: "Default Customers inserted successfully.",
+        count: result.count,
+      },
+      201
+    );
+  } catch (error) {
+    console.error(error);
+    return c.json({ message: "Failed to insert default Customers." }, 500);
+  }
+});
 export default app;
