@@ -176,51 +176,36 @@ app.post("/", checkUserToken(), async (c) => {
 //--PENDAPATAN MANUALL--//
 app.post("/pendapatan/manual", checkUserToken(), async (c) => {
   try {
-    const body = await c.req.json();
-    const user = c.get("user");
+    // Ambil user dari Context Hono
+    const user = c.get("user"); // user.id dijamin string
 
-    if (!user) {
-      return c.json({ success: false, message: "Unauthorized" }, 401);
-    }
+    const { total, deskripsi } = await c.req.json();
 
-    const { total, deskripsi } = body;
-
-    // Validasi input
-    if (!total || typeof total !== "number" || total <= 0) {
+    if (!total || total <= 0) {
       return c.json(
-        {
-          success: false,
-          message:
-            "Nominal total pendapatan wajib diisi dan harus bernilai positif.",
-        },
-        400
-      );
-    }
-
-    if (!deskripsi) {
-      return c.json(
-        {
-          success: false,
-          message: "Deskripsi/Keterangan pendapatan wajib diisi.",
-        },
+        { success: false, message: "Total nominal wajib diisi." },
         400
       );
     }
 
     const hasil = await prisma.$transaction(async (tx) => {
-      // 1. Ambil saldo kas terakhir user
-      const saldoAwal = await getLastSaldo(tx, user.id);
+      // 1. Saldo Kas Terakhir milik User yang sedang Login
+      const lastKas = await tx.bukuKas.findFirst({
+        where: { userId: user.id }, // Aman dari error TS null!
+        orderBy: { createdAt: "desc" },
+      });
+      const saldoAwal = lastKas?.saldoAkhir ?? 0;
 
-      // 2. Buat Record Pendapatan tanpa paymentId
+      // 2. Buat Pendapatan
       const pendapatan = await tx.pendapatan.create({
         data: {
-          userId: user.id,
+          userId: user.id, // Menggunakan ID user login
           total: total,
-          deskripsi: deskripsi, // contoh: "Pendapatan Pemasangan Baru - Bpk Ahmad"
+          deskripsi: deskripsi,
         },
       });
 
-      // 3. Cari atau Buat Buku Kas Harian
+      // 3. Catat / Update Buku Kas
       const now = new Date();
       const todayStart = new Date(now.setHours(0, 0, 0, 0));
       const todayEnd = new Date(now.setHours(23, 59, 59, 999));
@@ -228,27 +213,20 @@ app.post("/pendapatan/manual", checkUserToken(), async (c) => {
       let bukuKas = await tx.bukuKas.findFirst({
         where: {
           userId: user.id,
-          tanggal: {
-            gte: todayStart,
-            lte: todayEnd,
-          },
+          tanggal: { gte: todayStart, lte: todayEnd },
         },
       });
 
       if (bukuKas) {
-        // Update Buku Kas yang sudah ada hari ini
         bukuKas = await tx.bukuKas.update({
           where: { id: bukuKas.id },
           data: {
             totalMasuk: { increment: total },
             saldoAkhir: { increment: total },
-            pendapatan: {
-              connect: { id: pendapatan.id },
-            },
+            pendapatan: { connect: { id: pendapatan.id } },
           },
         });
       } else {
-        // Buat Buku Kas baru untuk hari ini
         bukuKas = await tx.bukuKas.create({
           data: {
             userId: user.id,
@@ -257,37 +235,21 @@ app.post("/pendapatan/manual", checkUserToken(), async (c) => {
             totalKeluar: 0,
             saldoAkhir: saldoAwal + total,
             deskripsi: "Pencatatan Pendapatan Harian",
-            keterangan: "Pemasukan Langsung / Non-Invoice",
-            pendapatan: {
-              connect: { id: pendapatan.id },
-            },
+            keterangan: "Pemasukan Langsung / Direct Income",
+            pendapatan: { connect: { id: pendapatan.id } },
           },
         });
       }
 
-      return {
-        pendapatan,
-        bukuKas,
-      };
+      return { pendapatan, bukuKas };
     });
 
     return c.json(
-      {
-        success: true,
-        message: "Pendapatan manual berhasil dicatat.",
-        data: hasil,
-      },
+      { success: true, message: "Pendapatan berhasil dicatat.", data: hasil },
       201
     );
   } catch (err: any) {
-    console.error(err);
-    return c.json(
-      {
-        success: false,
-        message: err.message || "Terjadi kesalahan pada server.",
-      },
-      400
-    );
+    return c.json({ success: false, message: err.message }, 500);
   }
 });
 

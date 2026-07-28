@@ -503,48 +503,135 @@ app.get("/", checkCustomerToken(), async (c) => {
 });
 
 //---CREATE-MANY--//
-app.post("/seed-customer", async (c) => {
+app.post("/seed-customer", checkUserToken(), async (c) => {
   try {
-    // Formatting tanggal dari ISO string ke Object Date JS
-    const formattedData = data.map((item) => ({
-      id: item.id,
-      username: item.username,
-      fullname: item.fullname,
-      email: item.email,
-      phoneNumber: item.phoneNumber,
-      address: item.address,
+    const resultCount = await prisma.$transaction(
+      async (tx) => {
+        // 1. Ambil semua ID master yang ada di DB untuk validasi FK
+        const existingPaketIds = new Set(
+          (await tx.paket.findMany({ select: { id: true } })).map((x) => x.id)
+        );
+        const existingAreaIds = new Set(
+          (await tx.area.findMany({ select: { id: true } })).map((x) => x.id)
+        );
+        const existingOdpIds = new Set(
+          (await tx.odp.findMany({ select: { id: true } })).map((x) => x.id)
+        );
+        const existingModemIds = new Set(
+          (await tx.modem.findMany({ select: { id: true } })).map((x) => x.id)
+        );
+        const existingOltIds = new Set(
+          (await tx.olt.findMany({ select: { id: true } })).map((x) => x.id)
+        );
 
-      ontName: item.ontName,
-      redamanOlt: item.redamanOlt,
+        let processedCount = 0;
 
-      diskon: item.diskon,
-      status: item.status,
+        for (const item of data) {
+          const createdAt = item.createdAt
+            ? new Date(item.createdAt)
+            : undefined;
+          const updatedAt = item.updatedAt
+            ? new Date(item.updatedAt)
+            : undefined;
 
-      paketId: item.paketId,
-      areaId: item.areaId,
-      odpId: item.odpId,
-      modemId: item.modemId,
-      oltId: item.oltId,
+          // Validasi Foreign Keys
+          const paketId =
+            item.paketId && existingPaketIds.has(item.paketId)
+              ? item.paketId
+              : null;
+          const areaId =
+            item.areaId && existingAreaIds.has(item.areaId)
+              ? item.areaId
+              : null;
+          const odpId =
+            item.odpId && existingOdpIds.has(item.odpId) ? item.odpId : null;
+          const modemId =
+            item.modemId && existingModemIds.has(item.modemId)
+              ? item.modemId
+              : null;
+          const oltId =
+            item.oltId && existingOltIds.has(item.oltId) ? item.oltId : null;
 
-      createdAt: item.createdAt,
-      updatedAt: item.updatedAt,
-    }));
+          // Data payload yang akan di-insert/update
+          const customerData = {
+            username: item.username,
+            fullname: item.fullname,
+            email: item.email,
+            phoneNumber: item.phoneNumber,
+            address: item.address,
+            ontName: item.ontName,
+            redamanOlt: item.redamanOlt,
+            diskon: item.diskon,
+            status: item.status,
+            paketId,
+            areaId,
+            odpId,
+            modemId,
+            oltId,
+            createdAt,
+            updatedAt,
+          };
 
-    const result = await prisma.customer.createMany({
-      data: formattedData,
-      skipDuplicates: true, // Biar tidak error kalau ID sudah pernah di-insert
-    });
+          // Hash password jika disediakan
+          const passwordHash = item.password
+            ? await hashPassword(item.password)
+            : null;
+
+          // 2. Gunakan UPSERT berdasarkan ID (atau username jika ID dari item tidak pasti)
+          const customer = await tx.customer.upsert({
+            where: { id: item.id },
+            update: customerData,
+            create: {
+              ...customerData,
+              id: item.id,
+              ...(passwordHash && {
+                password: {
+                  create: {
+                    hash: passwordHash,
+                  },
+                },
+              }),
+            },
+          });
+
+          // 3. Jika password diupdate pada seeder & CustomerPassword sudah ada
+          if (passwordHash && customer) {
+            await tx.customerPassword.upsert({
+              where: { customerId: customer.id },
+              update: { hash: passwordHash },
+              create: {
+                customerId: customer.id,
+                hash: passwordHash,
+              },
+            });
+          }
+
+          processedCount++;
+        }
+
+        return processedCount;
+      },
+      {
+        timeout: 60000, // Timeout 60 detik untuk pemrosesan seeder yang aman
+      }
+    );
 
     return c.json(
       {
-        message: "Default Customers inserted successfully.",
-        count: result.count,
+        message: "Default Customers seeded/upserted successfully.",
+        count: resultCount,
       },
       201
     );
   } catch (error) {
-    console.error(error);
-    return c.json({ message: "Failed to insert default Customers." }, 500);
+    console.error("Error seeding customers:", error);
+    return c.json(
+      {
+        message: "Failed to seed default Customers.",
+        error: error instanceof Error ? error.message : String(error),
+      },
+      500
+    );
   }
 });
 export default app;

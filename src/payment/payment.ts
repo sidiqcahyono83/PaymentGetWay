@@ -218,14 +218,14 @@ app.post("/", checkUserToken(), async (c) => {
 
 //POST /payment/ :id /attachment
 /*Multy-part-form
-Tab Body (form-data)
-Pilih tab Body -> centang form-data.
+  Tab Body (form-data)
+  Pilih tab Body -> centang form-data.
 
-Pada kolom Key, ketik file.
+  Pada kolom Key, ketik file.
 
-Arahkan kursor ke ujung kanan input file, ganti tipe kolom dari Text menjadi File.
+  Arahkan kursor ke ujung kanan input file, ganti tipe kolom dari Text menjadi File.
 
-Pada kolom Value, klik Select Files dan pilih berkas gambar/PDF bukti transfer dari komputer kamu.
+  Pada kolom Value, klik Select Files dan pilih berkas gambar/PDF bukti transfer dari komputer kamu.
  */
 app.post("/:id/attachment", checkUserToken(), async (c) => {
   let savedPath: string | null = null;
@@ -363,7 +363,6 @@ app.post("/:id/attachment", checkUserToken(), async (c) => {
 });
 
 //PATCH /payment/:id/verify
-// PATCH /payment/:id/verify
 app.patch("/:id/verify", checkUserToken(), async (c) => {
   try {
     const user = c.get("user");
@@ -533,6 +532,93 @@ app.get("/", checkUserToken(), async (c) => {
     return c.json(payment);
   } catch (error) {
     console.error(error);
+  }
+});
+
+/*POST /payments/gateway*/
+app.post("/gateway", checkUserToken(), async (c) => {
+  try {
+    const user = c.get("user");
+    const { invoiceId, method } = await c.req.json();
+
+    if (!invoiceId || !method) {
+      return c.json(
+        { success: false, message: "invoiceId dan method wajib diisi." },
+        400
+      );
+    }
+
+    // 1. Cek Invoice
+    const invoice = await prisma.invoice.findUnique({
+      where: { id: invoiceId },
+      include: { customer: true },
+    });
+
+    if (!invoice) {
+      return c.json(
+        { success: false, message: "Invoice tidak ditemukan." },
+        404
+      );
+    }
+
+    if (invoice.status !== "UNPAID") {
+      return c.json({ success: false, message: "Invoice sudah dibayar." }, 400);
+    }
+
+    // 2. Cek apakah ada payment PENDING
+    const pending = await prisma.payment.findFirst({
+      where: {
+        invoiceId,
+        status: { in: ["PENDING", "WAITING_VERIFICATION"] },
+      },
+    });
+
+    if (pending) {
+      return c.json(
+        {
+          success: false,
+          message: "Masih ada pembayaran yang sedang diproses.",
+        },
+        400
+      );
+    }
+
+    // 3. Buat Record Payment di DB (Status PENDING)
+    const newPayment = await prisma.payment.create({
+      data: {
+        invoiceId: invoice.id,
+        customerId: invoice.customerId,
+        amount: invoice.total,
+        method: method, // e.g. "MIDTRANS", "QRIS", "VA_BCA"
+        gateway: "MIDTRANS", // Sesuaikan nama gateway
+        status: "PENDING",
+        createdById: user.id,
+      },
+    });
+
+    // 4. Simulasi Integrasi ke Payment Gateway API (misal: Midtrans Snap / Xendit Invoice)
+    // Di dunia nyata, di sini kamu panggil API Midtrans SDK / Fetch API
+    const externalOrderRef = `PAY-${newPayment.id}`;
+    const paymentUrl = `https://app.sandbox.midtrans.com/snap/v2/vtweb/${externalOrderRef}`;
+
+    return c.json(
+      {
+        success: true,
+        message: "Payment Gateway berhasil diinisiasi.",
+        data: {
+          paymentId: newPayment.id,
+          amount: newPayment.amount,
+          paymentUrl: paymentUrl, // URL untuk di-redirect oleh Frontend
+        },
+      },
+      201
+    );
+  } catch (err: any) {
+    console.error(err);
+    return c.json(
+      { success: false, message: err.message || "Terjadi kesalahan server." },
+      500
+    );
   }
 });
 
