@@ -68,7 +68,7 @@ app.post("/seed-areas", async (c) => {
         message: "Default areas inserted successfully.",
         count: result.count,
       },
-      201
+      201,
     );
   } catch (error) {
     console.error(error);
@@ -95,6 +95,7 @@ app.patch("/:id", async (c) => {
     return c.json({ message: "Failed to update paket." }, 500);
   }
 });
+
 app.get("/:id", async (c) => {
   const id = c.req.param("id");
 
@@ -186,7 +187,7 @@ app.get("/", checkUserToken(), async (c) => {
         success: false,
         message: "Gagal mengambil data pembayaran.",
       },
-      500
+      500,
     );
   }
 });

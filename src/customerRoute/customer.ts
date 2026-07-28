@@ -11,8 +11,19 @@ import { data } from "./cus";
 export const app = new Hono();
 
 app.get("/all", checkUserToken(), async (c) => {
+  const user = c.get("user");
+
   try {
     const customers = await prisma.customer.findMany({
+      where: {
+        area: {
+          users: {
+            some: {
+              id: user.id,
+            },
+          },
+        },
+      },
       select: {
         id: true,
         username: true,
@@ -22,9 +33,7 @@ app.get("/all", checkUserToken(), async (c) => {
         ontName: true,
         redamanOlt: true,
         diskon: true,
-
         status: true,
-
         paketId: true,
         areaId: true,
         odpId: true,
@@ -138,7 +147,7 @@ app.post("/", async (c) => {
         message: "Customer berhasil ditambahkan.",
         data: customer,
       },
-      201
+      201,
     );
   } catch (error: any) {
     console.error(error);
@@ -150,7 +159,7 @@ app.post("/", async (c) => {
           message: "Validasi gagal.",
           errors: error.flatten(),
         },
-        400
+        400,
       );
     }
 
@@ -160,7 +169,7 @@ app.post("/", async (c) => {
           success: false,
           message: "Username sudah digunakan.",
         },
-        409
+        409,
       );
     }
 
@@ -170,7 +179,7 @@ app.post("/", async (c) => {
           success: false,
           message: "Email sudah digunakan.",
         },
-        409
+        409,
       );
     }
 
@@ -179,7 +188,7 @@ app.post("/", async (c) => {
         success: false,
         message: "Terjadi kesalahan pada server.",
       },
-      500
+      500,
     );
   }
 });
@@ -205,7 +214,7 @@ app.post("/register", async (c) => {
           success: false,
           message: "Username wajib diisi",
         },
-        400
+        400,
       );
     }
 
@@ -215,7 +224,7 @@ app.post("/register", async (c) => {
           success: false,
           message: "Password PPPoE wajib diisi",
         },
-        400
+        400,
       );
     }
 
@@ -225,7 +234,7 @@ app.post("/register", async (c) => {
           success: false,
           message: "Profile PPPoE wajib dipilih",
         },
-        400
+        400,
       );
     }
 
@@ -253,7 +262,7 @@ app.post("/register", async (c) => {
           success: false,
           message: pppData.message ?? "Gagal membuat user PPPoE",
         },
-        400
+        400,
       );
     }
 
@@ -294,7 +303,7 @@ app.post("/register", async (c) => {
         customer,
         pppoe: pppData,
       },
-      201
+      201,
     );
   } catch (error: any) {
     console.error(error);
@@ -305,7 +314,7 @@ app.post("/register", async (c) => {
           success: false,
           message: "Username sudah digunakan.",
         },
-        400
+        400,
       );
     }
 
@@ -314,7 +323,7 @@ app.post("/register", async (c) => {
         success: false,
         message: "Gagal menambahkan customer.",
       },
-      500
+      500,
     );
   }
 });
@@ -331,7 +340,7 @@ app.patch("/:id", async (c) => {
           success: false,
           message: "Data yang dikirim kosong.",
         },
-        400
+        400,
       );
     }
     // Cek customer
@@ -347,7 +356,7 @@ app.patch("/:id", async (c) => {
           success: false,
           message: "Customer tidak ditemukan.",
         },
-        404
+        404,
       );
     }
 
@@ -436,7 +445,7 @@ app.patch("/:id", async (c) => {
           success: false,
           message: "Username sudah digunakan.",
         },
-        400
+        400,
       );
     }
 
@@ -445,7 +454,7 @@ app.patch("/:id", async (c) => {
         success: false,
         message: "Gagal memperbarui customer.",
       },
-      500
+      500,
     );
   }
 });
@@ -509,19 +518,19 @@ app.post("/seed-customer", checkUserToken(), async (c) => {
       async (tx) => {
         // 1. Ambil semua ID master yang ada di DB untuk validasi FK
         const existingPaketIds = new Set(
-          (await tx.paket.findMany({ select: { id: true } })).map((x) => x.id)
+          (await tx.paket.findMany({ select: { id: true } })).map((x) => x.id),
         );
         const existingAreaIds = new Set(
-          (await tx.area.findMany({ select: { id: true } })).map((x) => x.id)
+          (await tx.area.findMany({ select: { id: true } })).map((x) => x.id),
         );
         const existingOdpIds = new Set(
-          (await tx.odp.findMany({ select: { id: true } })).map((x) => x.id)
+          (await tx.odp.findMany({ select: { id: true } })).map((x) => x.id),
         );
         const existingModemIds = new Set(
-          (await tx.modem.findMany({ select: { id: true } })).map((x) => x.id)
+          (await tx.modem.findMany({ select: { id: true } })).map((x) => x.id),
         );
         const existingOltIds = new Set(
-          (await tx.olt.findMany({ select: { id: true } })).map((x) => x.id)
+          (await tx.olt.findMany({ select: { id: true } })).map((x) => x.id),
         );
 
         let processedCount = 0;
@@ -613,7 +622,7 @@ app.post("/seed-customer", checkUserToken(), async (c) => {
       },
       {
         timeout: 60000, // Timeout 60 detik untuk pemrosesan seeder yang aman
-      }
+      },
     );
 
     return c.json(
@@ -621,7 +630,7 @@ app.post("/seed-customer", checkUserToken(), async (c) => {
         message: "Default Customers seeded/upserted successfully.",
         count: resultCount,
       },
-      201
+      201,
     );
   } catch (error) {
     console.error("Error seeding customers:", error);
@@ -630,7 +639,7 @@ app.post("/seed-customer", checkUserToken(), async (c) => {
         message: "Failed to seed default Customers.",
         error: error instanceof Error ? error.message : String(error),
       },
-      500
+      500,
     );
   }
 });
