@@ -11,7 +11,6 @@ import {
 const app = new Hono();
 
 // --- 1. ENDPOINT: BUAT PEMBAYARAN / SNAP TOKEN ---
-// --- 1. ENDPOINT: BUAT PEMBAYARAN / SNAP TOKEN ---
 app.post("/payments/charge", async (c) => {
   try {
     const { invoiceId } = await c.req.json();
@@ -64,7 +63,7 @@ app.post("/payments/charge", async (c) => {
     // Simpan data Payment ke Prisma (Gunakan field 'gatewayTransactionId')
     const payment = await prisma.payment.create({
       data: {
-        gatewayTransactionId: orderId, // FIX: Menyesuaikan schema Prisma
+        orderId: orderId, // FIX: Menyesuaikan schema Prisma
         amount: invoice.total,
         method: "VIRTUAL_ACCOUNT",
         gateway: PaymentGateway.MIDTRANS,
@@ -86,7 +85,7 @@ app.post("/payments/charge", async (c) => {
     console.error("Error charging payment:", error);
     return c.json(
       { message: "Gagal membuat transaksi pembayaran", error: String(error) },
-      500
+      500,
     );
   }
 });
@@ -141,7 +140,7 @@ app.post("/payments/notification", async (c) => {
 
       if (!existingPayment) {
         console.warn(
-          `Payment dengan gatewayTransactionId: ${orderId} tidak ditemukan.`
+          `Payment dengan gatewayTransactionId: ${orderId} tidak ditemukan.`,
         );
         return;
       }
@@ -276,7 +275,7 @@ app.post("/webhook", async (c) => {
     if (!payment) {
       return c.json(
         { success: false, message: "Payment tidak ditemukan." },
-        404
+        404,
       );
     }
 
@@ -404,7 +403,7 @@ app.post("/webhook", async (c) => {
     console.error("Webhook Error:", err);
     return c.json(
       { success: false, message: err.message || "Error webhook." },
-      500
+      500,
     );
   }
 });
