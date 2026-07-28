@@ -1,14 +1,166 @@
 import { Hono } from "hono";
 import { prisma } from "../../lib/prisma";
-import {
-  PaymentMethod,
-  InvoiceStatus,
-  PaymentStatus,
-  VerificationStatus,
-  CustomerStatus,
-} from "../../generated/prisma/client";
+import crypto from "crypto";
+import { coreApi, snap } from "../util/midtrans";
+// FIX: Hapus kata 'type' agar Enum bisa digunakan sebagai JavaScript Object/Value
+import { PaymentStatus } from "../../generated/prisma/client";
 
 const app = new Hono();
+
+// --- 1. ENDPOINT: BUAT PEMBAYARAN / SNAP TOKEN ---
+app.post("/payments/charge", async (c) => {
+  try {
+    const { invoiceId } = await c.req.json();
+
+    if (!invoiceId) {
+      return c.json({ message: "invoiceId wajib diisi" }, 400);
+    }
+
+    // Ambil data Invoice beserta Customer & Paket
+    const invoice = await prisma.invoice.findUnique({
+      where: { id: invoiceId },
+      include: { customer: true },
+    });
+
+    if (!invoice) {
+      return c.json({ message: "Invoice tidak ditemukan" }, 404);
+    }
+
+    if (invoice.status === "PAID") {
+      return c.json({ message: "Invoice ini sudah lunas" }, 400);
+    }
+
+    // Format unique order_id untuk Midtrans (misal: INV123-168000000)
+    const orderId = `${invoice.id}-${Date.now()}`;
+
+    // Parameter transaksi Midtrans
+    const parameter = {
+      transaction_details: {
+        order_id: orderId,
+        gross_amount: Number(invoice.total), // Jumlah tagihan
+      },
+      customer_details: {
+        first_name: invoice.customer.fullname,
+        email: invoice.customer.email || undefined,
+        phone: invoice.customer.phoneNumber || undefined,
+      },
+      item_details: [
+        {
+          id: invoice.id,
+          price: Number(invoice.total),
+          quantity: 1,
+          name: `Pembayaran Internet - ${invoice.customer.fullname}`,
+        },
+      ],
+    };
+
+    // Minta Snap Token dari Midtrans
+    const transaction = await snap.createTransaction(parameter);
+
+    // Saat simpan data Payment
+    const payment = await prisma.payment.create({
+      data: {
+        gatewayTransactionId: orderId,
+        amount: invoice.total,
+        method: "VIRTUAL_ACCOUNT",
+        gateway: "MIDTRANS",
+        status: PaymentStatus.PENDING,
+        snapToken: transaction.token,
+        paymentUrl: transaction.redirect_url,
+        invoiceId: invoice.id,
+        customerId: invoice.customerId,
+      },
+    });
+
+    return c.json({
+      message: "Snap token berhasil dibuat",
+      token: transaction.token,
+      redirect_url: transaction.redirect_url,
+      payment,
+    });
+  } catch (error) {
+    console.error("Error charging payment:", error);
+    return c.json(
+      { message: "Gagal membuat transaksi pembayaran", error: String(error) },
+      500
+    );
+  }
+});
+
+// --- 2. ENDPOINT: WEBHOOK NOTIFIKASI DARI MIDTRANS ---
+app.post("/payments/notification", async (c) => {
+  try {
+    const notificationJson = await c.req.json();
+    const statusResponse = await coreApi.transaction.notification(
+      notificationJson
+    );
+
+    const orderId = statusResponse.order_id;
+    const transactionStatus = statusResponse.transaction_status;
+    const fraudStatus = statusResponse.fraud_status;
+
+    // Ekstrak invoiceId jika orderId kamu menggunakan format "INVOICE_ID-TIMESTAMP"
+    const invoiceId = orderId.split("-")[0];
+
+    // Pemetaan status Midtrans ke Enum PaymentStatus Prisma
+    let paymentStatus: PaymentStatus = PaymentStatus.PENDING;
+    let isPaid = false;
+
+    if (transactionStatus === "capture") {
+      if (fraudStatus === "accept") {
+        paymentStatus = PaymentStatus.SUCCESS;
+        isPaid = true;
+      } else {
+        paymentStatus = PaymentStatus.PENDING;
+      }
+    } else if (transactionStatus === "settlement") {
+      paymentStatus = PaymentStatus.SUCCESS;
+      isPaid = true;
+    } else if (transactionStatus === "cancel" || transactionStatus === "deny") {
+      paymentStatus = PaymentStatus.FAILED;
+    } else if (transactionStatus === "expire") {
+      paymentStatus = PaymentStatus.EXPIRED;
+    } else if (transactionStatus === "pending") {
+      paymentStatus = PaymentStatus.PENDING;
+    }
+
+    // Jalankan pembaruan data secara atomic
+    await prisma.$transaction(async (tx) => {
+      // 1. Update Payment berdasarkan gatewayTransactionId
+      await tx.payment.updateMany({
+        where: {
+          gatewayTransactionId: orderId,
+        },
+        data: {
+          status: paymentStatus,
+          paidAt: isPaid ? new Date() : null,
+        },
+      });
+
+      // 2. Jika LUNAS, perbarui Invoice dan Customer
+      if (isPaid) {
+        const invoice = await tx.invoice.update({
+          where: { id: invoiceId },
+          data: {
+            status: "PAID",
+            paidAt: new Date(),
+          },
+        });
+
+        // Aktifkan kembali customer
+        await tx.customer.update({
+          where: { id: invoice.customerId },
+          data: { status: "ACTIVE" },
+        });
+      }
+    });
+
+    return c.json({ message: "Notification processed successfully" }, 200);
+  } catch (error) {
+    console.error("Error processing Midtrans notification:", error);
+    return c.json({ message: "Failed to process notification" }, 500);
+  }
+});
 
 // NOTE: checkUserToken() dilepas karena webhook dipanggil oleh Payment Gateway dari luar
 app.post("/webhook", async (c) => {
@@ -40,7 +192,7 @@ app.post("/webhook", async (c) => {
     }
 
     // Hindari pemrosesan ulang jika transaksi sudah lunas/sukses
-    if (payment.status === "SUCCESS") {
+    if (payment.status === PaymentStatus.SUCCESS) {
       return c.json({
         success: true,
         message: "Payment sudah diproses sebelumnya.",
@@ -51,9 +203,6 @@ app.post("/webhook", async (c) => {
     if (transactionStatus === "SUCCESS" || transactionStatus === "SETTLEMENT") {
       const transactionDate = new Date();
 
-      // Penentuan userId penanggung jawab kas:
-      // Ambil dari pencipta payment, atau pembuat invoice, atau fallback ke default admin ID
-      // Solusi paling sederhana & aman
       const targetUserId = payment.createdById ?? "clx_admin_system_default";
 
       await prisma.$transaction(async (tx) => {
@@ -61,7 +210,7 @@ app.post("/webhook", async (c) => {
         await tx.payment.update({
           where: { id: payment.id },
           data: {
-            status: "SUCCESS",
+            status: PaymentStatus.SUCCESS,
             paidAt: transactionDate,
           },
         });
@@ -85,7 +234,7 @@ app.post("/webhook", async (c) => {
           },
         });
 
-        // D. Hitung Rentang Tanggal Harian tanpa merusak objek transactionDate
+        // D. Hitung Rentang Tanggal Harian
         const todayStart = new Date(transactionDate);
         todayStart.setHours(0, 0, 0, 0);
 
@@ -152,7 +301,7 @@ app.post("/webhook", async (c) => {
     if (transactionStatus === "EXPIRED" || transactionStatus === "FAILED") {
       await prisma.payment.update({
         where: { id: payment.id },
-        data: { status: "FAILED" },
+        data: { status: PaymentStatus.FAILED },
       });
 
       return c.json({
