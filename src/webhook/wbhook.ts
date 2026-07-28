@@ -2,11 +2,15 @@ import { Hono } from "hono";
 import { prisma } from "../../lib/prisma";
 import crypto from "crypto";
 import { coreApi, snap } from "../util/midtrans";
-// FIX: Hapus kata 'type' agar Enum bisa digunakan sebagai JavaScript Object/Value
-import { PaymentStatus } from "../../generated/prisma/client";
+import {
+  PaymentStatus,
+  InvoiceStatus,
+  PaymentGateway,
+} from "../../generated/prisma/client";
 
 const app = new Hono();
 
+// --- 1. ENDPOINT: BUAT PEMBAYARAN / SNAP TOKEN ---
 // --- 1. ENDPOINT: BUAT PEMBAYARAN / SNAP TOKEN ---
 app.post("/payments/charge", async (c) => {
   try {
@@ -16,7 +20,7 @@ app.post("/payments/charge", async (c) => {
       return c.json({ message: "invoiceId wajib diisi" }, 400);
     }
 
-    // Ambil data Invoice beserta Customer & Paket
+    // Ambil data Invoice beserta Customer
     const invoice = await prisma.invoice.findUnique({
       where: { id: invoiceId },
       include: { customer: true },
@@ -26,18 +30,18 @@ app.post("/payments/charge", async (c) => {
       return c.json({ message: "Invoice tidak ditemukan" }, 404);
     }
 
-    if (invoice.status === "PAID") {
+    if (invoice.status === InvoiceStatus.PAID) {
       return c.json({ message: "Invoice ini sudah lunas" }, 400);
     }
 
-    // Format unique order_id untuk Midtrans (misal: INV123-168000000)
+    // Format unique order_id untuk Midtrans
     const orderId = `${invoice.id}-${Date.now()}`;
 
-    // Parameter transaksi Midtrans
+    // Parameter transaksi Midtrans (Gunakan 'order_id' snake_case)
     const parameter = {
       transaction_details: {
-        order_id: orderId,
-        gross_amount: Number(invoice.total), // Jumlah tagihan
+        order_id: orderId, // FIX: Wajib order_id (snake_case)
+        gross_amount: Number(invoice.total),
       },
       customer_details: {
         first_name: invoice.customer.fullname,
@@ -57,13 +61,13 @@ app.post("/payments/charge", async (c) => {
     // Minta Snap Token dari Midtrans
     const transaction = await snap.createTransaction(parameter);
 
-    // Saat simpan data Payment
+    // Simpan data Payment ke Prisma (Gunakan field 'gatewayTransactionId')
     const payment = await prisma.payment.create({
       data: {
-        gatewayTransactionId: orderId,
+        gatewayTransactionId: orderId, // FIX: Menyesuaikan schema Prisma
         amount: invoice.total,
         method: "VIRTUAL_ACCOUNT",
-        gateway: "MIDTRANS",
+        gateway: PaymentGateway.MIDTRANS,
         status: PaymentStatus.PENDING,
         snapToken: transaction.token,
         paymentUrl: transaction.redirect_url,
@@ -91,67 +95,152 @@ app.post("/payments/charge", async (c) => {
 app.post("/payments/notification", async (c) => {
   try {
     const notificationJson = await c.req.json();
-    const statusResponse = await coreApi.transaction.notification(
-      notificationJson
-    );
 
-    const orderId = statusResponse.order_id;
-    const transactionStatus = statusResponse.transaction_status;
-    const fraudStatus = statusResponse.fraud_status;
+    // Payload asli dari Midtrans menggunakan 'order_id'
+    const orderId = notificationJson.order_id;
+    const transactionStatus = notificationJson.transaction_status;
+    const fraudStatus = notificationJson.fraud_status;
 
-    // Ekstrak invoiceId jika orderId kamu menggunakan format "INVOICE_ID-TIMESTAMP"
-    const invoiceId = orderId.split("-")[0];
+    if (!orderId) {
+      return c.json({ message: "Invalid payload: missing order_id" }, 400);
+    }
 
     // Pemetaan status Midtrans ke Enum PaymentStatus Prisma
-    let paymentStatus: PaymentStatus = PaymentStatus.PENDING;
+    let targetPaymentStatus: PaymentStatus = PaymentStatus.PENDING;
     let isPaid = false;
 
     if (transactionStatus === "capture") {
       if (fraudStatus === "accept") {
-        paymentStatus = PaymentStatus.SUCCESS;
+        targetPaymentStatus = PaymentStatus.SUCCESS;
         isPaid = true;
       } else {
-        paymentStatus = PaymentStatus.PENDING;
+        targetPaymentStatus = PaymentStatus.PENDING;
       }
     } else if (transactionStatus === "settlement") {
-      paymentStatus = PaymentStatus.SUCCESS;
+      targetPaymentStatus = PaymentStatus.SUCCESS;
       isPaid = true;
     } else if (transactionStatus === "cancel" || transactionStatus === "deny") {
-      paymentStatus = PaymentStatus.FAILED;
+      targetPaymentStatus = PaymentStatus.FAILED;
     } else if (transactionStatus === "expire") {
-      paymentStatus = PaymentStatus.EXPIRED;
+      targetPaymentStatus = PaymentStatus.EXPIRED;
     } else if (transactionStatus === "pending") {
-      paymentStatus = PaymentStatus.PENDING;
+      targetPaymentStatus = PaymentStatus.PENDING;
     }
 
     // Jalankan pembaruan data secara atomic
     await prisma.$transaction(async (tx) => {
-      // 1. Update Payment berdasarkan gatewayTransactionId
-      await tx.payment.updateMany({
-        where: {
-          gatewayTransactionId: orderId,
-        },
-        data: {
-          status: paymentStatus,
-          paidAt: isPaid ? new Date() : null,
+      // 1. Cari data Payment berdasarkan gatewayTransactionId
+      const existingPayment = await tx.payment.findFirst({
+        where: { orderId: orderId }, // FIX: Menyesuaikan schema Prisma
+        include: {
+          invoice: {
+            include: { customer: true },
+          },
         },
       });
 
-      // 2. Jika LUNAS, perbarui Invoice dan Customer
-      if (isPaid) {
+      if (!existingPayment) {
+        console.warn(
+          `Payment dengan gatewayTransactionId: ${orderId} tidak ditemukan.`
+        );
+        return;
+      }
+
+      // Hindari pemrosesan ulang jika sudah SUCCESS
+      if (existingPayment.status === PaymentStatus.SUCCESS) {
+        return;
+      }
+
+      const transactionDate = new Date();
+
+      // 2. Update status Payment
+      const updatedPayment = await tx.payment.update({
+        where: { id: existingPayment.id },
+        data: {
+          status: targetPaymentStatus,
+          paidAt: isPaid ? transactionDate : null,
+        },
+      });
+
+      // 3. Jika LUNAS (SUCCESS)
+      if (isPaid && updatedPayment) {
+        // A. Update Invoice -> PAID
         const invoice = await tx.invoice.update({
-          where: { id: invoiceId },
+          where: { id: updatedPayment.invoiceId },
           data: {
-            status: "PAID",
-            paidAt: new Date(),
+            status: InvoiceStatus.PAID,
+            paidAt: transactionDate,
           },
         });
 
-        // Aktifkan kembali customer
+        // B. Aktifkan kembali Customer
         await tx.customer.update({
           where: { id: invoice.customerId },
           data: { status: "ACTIVE" },
         });
+
+        // C. Cari User Admin default jika createdById kosong (Auto Gateway)
+        let systemUserId = existingPayment.createdById;
+        if (!systemUserId) {
+          const defaultAdmin = await tx.user.findFirst();
+          systemUserId = defaultAdmin?.id ?? null;
+        }
+
+        // D. Buat Catatan Pendapatan jika ada User terasosiasi
+        if (systemUserId) {
+          const newPendapatan = await tx.pendapatan.create({
+            data: {
+              paymentId: updatedPayment.id,
+              userId: systemUserId,
+              total: updatedPayment.amount,
+              deskripsi: `Pembayaran Gateway (${updatedPayment.gateway}) Invoice #${existingPayment.invoice.invoiceNumber} - ${existingPayment.invoice.customer.fullname}`,
+            },
+          });
+
+          // E. Update / Buat Buku Kas Hari Ini
+          const todayStart = new Date(transactionDate);
+          todayStart.setHours(0, 0, 0, 0);
+
+          const todayEnd = new Date(transactionDate);
+          todayEnd.setHours(23, 59, 59, 999);
+
+          let bukuKas = await tx.bukuKas.findFirst({
+            where: {
+              userId: systemUserId,
+              tanggal: { gte: todayStart, lte: todayEnd },
+            },
+          });
+
+          if (bukuKas) {
+            await tx.bukuKas.update({
+              where: { id: bukuKas.id },
+              data: {
+                totalMasuk: { increment: updatedPayment.amount },
+                saldoAkhir: { increment: updatedPayment.amount },
+                pendapatan: { connect: { id: newPendapatan.id } },
+              },
+            });
+          } else {
+            const lastKas = await tx.bukuKas.findFirst({
+              where: { userId: systemUserId },
+              orderBy: { createdAt: "desc" },
+            });
+            const saldoAwal = lastKas?.saldoAkhir ?? 0;
+
+            await tx.bukuKas.create({
+              data: {
+                userId: systemUserId,
+                tanggal: transactionDate,
+                totalMasuk: updatedPayment.amount,
+                totalKeluar: 0,
+                saldoAkhir: saldoAwal + updatedPayment.amount,
+                deskripsi: "Pencatatan Pemasukan Otomatis Midtrans",
+                keterangan: "Midtrans Auto-Settlement",
+                pendapatan: { connect: { id: newPendapatan.id } },
+              },
+            });
+          }
+        }
       }
     });
 

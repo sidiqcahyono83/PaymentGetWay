@@ -280,10 +280,10 @@ model Payment {
   status PaymentStatus @default(PENDING)
 
   // Payment gateway
-  gatewayTransactionId String? @unique
-  paymentCode          String?
-  paymentUrl           String?
-  snapToken            String?
+  orderId     String? @unique
+  paymentCode String?
+  paymentUrl  String?
+  snapToken   String?
 
   // Transfer manual
   bankName      String?

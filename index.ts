@@ -17,6 +17,7 @@ import pppoeRoute from "./src/pppRoute/pppoe";
 //IV dan Payment//
 import invoiceRoute from "./src/invoice/invoiceRoute";
 import paymentRoute from "./src/payment/payment";
+import webhookRoute from "./src/webhook/wbhook";
 
 //----KAS-----//
 import pendapatanRoute from "./src/pendapatanRoute/pendapatan";
@@ -70,7 +71,7 @@ app.use(
     allowHeaders: ["Authorization", "Content-Type", "X-Requested-With"],
     allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     credentials: true,
-  }),
+  })
 );
 app.use("/uploads/pembayaran/*", serveStatic({ root: "./" }));
 app.use("/foto", serveStatic({ root: "/home/teranet" }));
@@ -101,6 +102,7 @@ app.route("/inv", invoiceRoute);
 
 //--PEYMENT--//
 app.route("/payment", paymentRoute);
+app.route("/paymentGetway", webhookRoute);
 
 // KAS //
 app.route("/pendapatan", pendapatanRoute);
