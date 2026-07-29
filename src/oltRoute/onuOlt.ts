@@ -18,7 +18,7 @@ interface OntResponse {
 const olt = new Hono<{ Variables: VariablesOlt }>();
 
 // semua ONU
-olt.get("/onu", oltAuth, async (c) => {
+olt.get("/", oltAuth, async (c) => {
   const token = c.get("xToken");
   const baseUrl = c.get("baseUrl");
 
@@ -58,7 +58,7 @@ olt.get("/onu/:name", oltAuth, async (c) => {
   const data = (await res.json()) as OntResponse;
 
   const result = data.data.filter(
-    (ont: any) => ont.ont_name.toLowerCase() === name.toLowerCase(),
+    (ont: any) => ont.ont_name.toLowerCase() === name.toLowerCase()
   );
 
   return c.json({
@@ -85,7 +85,7 @@ olt.get("/onu/sn/:sn", oltAuth, async (c) => {
   const data = (await res.json()) as OntResponse;
 
   const result = data.data.filter(
-    (ont: any) => ont.ont_sn.toLowerCase() === sn.toLowerCase(),
+    (ont: any) => ont.ont_sn.toLowerCase() === sn.toLowerCase()
   );
 
   return c.json({
@@ -110,7 +110,7 @@ olt.get("/port/:port", oltAuth, async (c) => {
       headers: {
         "x-token": token,
       },
-    },
+    }
   );
 
   const data = await res.json();

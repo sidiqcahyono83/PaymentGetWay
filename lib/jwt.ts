@@ -18,7 +18,7 @@ export const createToken = async (userId: string) => {
   const payload = {};
   const options = {
     subject: userId,
-    expiresIn: new TimeSpan(2, "h"),
+    expiresIn: new TimeSpan(24, "h"),
     includeIssuedTimestamp: true,
   };
 

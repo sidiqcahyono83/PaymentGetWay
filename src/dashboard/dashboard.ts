@@ -77,6 +77,7 @@ app.get("/", checkUserToken(), async (c) => {
     latestPayments,
 
     payments,
+    paymentPending,
   ] = await Promise.all([
     prisma.customer.count(),
     prisma.customer.count({
@@ -121,6 +122,18 @@ app.get("/", checkUserToken(), async (c) => {
     prisma.payment.aggregate({
       where: {
         status: "SUCCESS",
+        paidAt: {
+          gte: awalBulan,
+          lt: akhirBulan,
+        },
+      },
+      _sum: {
+        amount: true,
+      },
+    }),
+    prisma.payment.aggregate({
+      where: {
+        status: "PENDING",
         paidAt: {
           gte: awalBulan,
           lt: akhirBulan,
@@ -247,7 +260,7 @@ app.get("/", checkUserToken(), async (c) => {
     invoicePaid,
     invoiceUnpaid,
     invoiceExpired,
-
+    paymentPending,
     income: Number(incomeMonth._sum.amount ?? 0),
     pppoeActive: pppData.jumlah_active_ppp,
     pppoeDisable: disableData.jumlah_disabled_ppp,

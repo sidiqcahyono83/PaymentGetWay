@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { z } from "zod";
+import { minLength, z } from "zod";
 import { zValidator } from "@hono/zod-validator";
 import { prisma } from "../../lib/prisma";
 
@@ -20,7 +20,7 @@ app.post(
     z.object({
       username: z.string(),
       password: z.string(),
-    }),
+    })
   ),
   async (c) => {
     const body = c.req.valid("json");
@@ -44,7 +44,7 @@ app.post(
 
     const validPassword = await verifyPassword(
       foundUser.password.hash,
-      body.password,
+      body.password
     );
 
     if (!validPassword) {
@@ -73,10 +73,10 @@ app.post(
           message: "Token failed to create",
           error: String(err),
         },
-        500,
+        500
       );
     }
-  },
+  }
 );
 
 app.get("/", async (c) => {
@@ -94,6 +94,7 @@ app.get("/", async (c) => {
             areas: true,
           },
         },
+        areas: true,
       },
     });
     return c.json({ users });
@@ -107,66 +108,110 @@ const registerSchema = z.object({
   username: z.string().min(4),
   password: z.string().min(4),
   fullname: z.string().min(4),
+  phoneNumber: z.string().min(11),
+  address: z.string().min(6),
+  areas: z.array(z.string()).optional(),
 });
 
-app.post("/register", zValidator("json", registerSchema), async (c) => {
-  const body = c.req.valid("json");
+app.post(
+  "/register",
+  checkUserToken(),
+  zValidator("json", registerSchema),
+  async (c) => {
+    const body = c.req.valid("json");
 
-  try {
-    const newUser = await prisma.user.create({
-      data: {
-        username: body.username,
-        fullname: body.fullname,
-
-        password: {
-          create: {
-            hash: await hashPassword(body.password),
+    try {
+      const newUser = await prisma.user.create({
+        data: {
+          username: body.username,
+          fullname: body.fullname,
+          phoneNumber: body.phoneNumber,
+          address: body.address,
+          password: {
+            create: {
+              hash: await hashPassword(body.password),
+            },
+          },
+          // Hubungkan area jika `areaIds` dikirim dan tidak kosong
+          ...(body.areas &&
+            body.areas.length > 0 && {
+              areas: {
+                connect: body.areas.map((id) => ({ id })),
+              },
+            }),
+        },
+        // Opsional: sertakan relasi areas jika ingin ditampilkan di response
+        include: {
+          areas: {
+            select: {
+              id: true,
+              name: true,
+            },
           },
         },
-      },
-    });
-    console.log(newUser);
-    return c.json(
-      {
-        message: "Register new user successful",
-        user: {
-          username: newUser.username,
-          fullname: newUser.fullname,
+      });
+
+      console.log(newUser);
+      return c.json(
+        {
+          message: "Register new user successful",
+          user: {
+            username: newUser.username,
+            fullname: newUser.fullname,
+            phoneNumber: newUser.phoneNumber,
+            address: newUser.address,
+            areas: newUser.areas,
+          },
         },
-      },
-      201,
-    );
-  } catch (error: unknown) {
-    console.error(error);
+        201
+      );
+    } catch (error: unknown) {
+      console.error(error);
 
-    return c.json(
-      {
-        message: "Cannot register user.",
-      },
-      400,
-    );
+      return c.json(
+        {
+          message: "Cannot register user.",
+          error: error instanceof Error ? error.message : "Unknown error",
+        },
+        400
+      );
+    }
   }
-});
-
-const updateUserSchema = z.object({
-  username: z.string().min(4).optional(),
-  password: z.string().min(4).optional(),
-  fullname: z.string().min(4).optional(),
-  address: z.string().optional(),
-  phoneNumber: z.string().optional(),
-  level: z.string().optional(),
-});
+);
 
 app.patch("/:id", checkUserToken(), async (c) => {
   const userId = c.req.param("id");
-  // Terima areaIds dalam bentuk Array (misal: string[])
-  const { password, areaIds } = await c.req.json();
+  // Terima field baru: phoneNumber, address, level, beserta password & areaIds
+  const { password, areaIds, phoneNumber, address, level } = await c.req.json();
 
-  if (!password && (!areaIds || areaIds.length === 0)) {
+  // Validasi minimal ada salah satu data yang dikirim untuk diupdate
+  if (
+    !password &&
+    (!areaIds || areaIds.length === 0) &&
+    !phoneNumber &&
+    !address &&
+    !level
+  ) {
     return c.json(
-      { message: "Sediakan password atau areaIds yang valid." },
-      400,
+      {
+        message:
+          "Sediakan minimal salah satu data yang valid untuk diperbarui (password, areaIds, phoneNumber, address, level).",
+      },
+      400
     );
+  }
+
+  // Validasi nilai level jika dikirim
+  if (level) {
+    const validLevels = ["ADMIN", "SUPER_ADMIN", "STAFF"]; // Sesuaikan kapitalisasi dengan Enum di Prisma schema Anda (misal: "admin", "staff" atau huruf besar)
+    // Jika di schema menggunakan huruf kapital: "ADMIN", "STAFF"
+    const upperLevel = level.toUpperCase();
+    if (!validLevels.includes(upperLevel)) {
+      return c.json(
+        { message: "Level tidak valid. Pilih antara ADMIN atau STAFF." },
+        400
+      );
+    }
   }
 
   try {
@@ -182,10 +227,22 @@ app.patch("/:id", checkUserToken(), async (c) => {
       };
     }
 
+    if (phoneNumber !== undefined) {
+      updateData.phoneNumber = phoneNumber;
+    }
+
+    if (address !== undefined) {
+      updateData.address = address;
+    }
+
+    if (level) {
+      updateData.level = level.toUpperCase();
+    }
+
     // Jika mengirim banyak areaId (Array)
     if (areaIds && Array.isArray(areaIds) && areaIds.length > 0) {
       updateData.areas = {
-        // Map setiap string ID menjadi objek { id: "..." }
+        // Menggunakan 'connect' untuk menambahkan area baru tanpa menghapus area lama
         connect: areaIds.map((id: string) => ({ id })),
       };
     }
@@ -197,6 +254,8 @@ app.patch("/:id", checkUserToken(), async (c) => {
         id: true,
         username: true,
         fullname: true,
+        phoneNumber: true,
+        address: true,
         level: true,
         areas: {
           select: {
@@ -226,7 +285,7 @@ app.post("/", checkUserToken(), async (c) => {
   if (!username || !fullname || !password) {
     return c.json(
       { message: "Username, fullname, dan password wajib diisi." },
-      400,
+      400
     );
   }
 
@@ -256,7 +315,7 @@ app.post("/", checkUserToken(), async (c) => {
         fullname,
         address,
         phoneNumber,
-        level: level || "ADMIN", // Default level jika tidak dikirim
+        level: level || "STAFF", // Default level jika tidak dikirim
         password: {
           create: {
             hash: hashedPassword,
@@ -274,7 +333,7 @@ app.post("/", checkUserToken(), async (c) => {
         areas: {
           select: {
             id: true,
-            name: true, // Sesuaikan dengan field nama area di schema Anda
+            name: true,
           },
         },
         createdAt: true,
@@ -286,7 +345,7 @@ app.post("/", checkUserToken(), async (c) => {
         message: "User berhasil dibuat.",
         data: newUser,
       },
-      201,
+      201
     );
   } catch (error) {
     console.error("Error creating user:", error);

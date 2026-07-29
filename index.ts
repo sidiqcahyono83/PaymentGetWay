@@ -73,17 +73,18 @@ app.use(
     credentials: true,
   })
 );
-app.use("/uploads/pembayaran/*", serveStatic({ root: "./" }));
+app.use("/uploads/*", serveStatic({ root: "./" }));
 app.use("/foto", serveStatic({ root: "/home/teranet" }));
 app.get("/", (c) => {
   return c.json({
     message: "NetworkStore API",
   });
 });
-//Login-User//
-app.route("/auth", loginRoute);
 //Login-Customer//
 app.route("/auth/login/customer", loginCustomerRoute);
+//Login-User//
+app.route("/auth", loginRoute);
+app.route("/dashboard", dashboardRoute);
 app.route("/users", userRoute);
 app.route("/areas", areaRoute);
 app.route("/pakets", paketRoute);
@@ -91,14 +92,11 @@ app.route("/odps", odpRoute);
 app.route("/modems", modemRoute);
 app.route("/olts", oltRoute);
 app.route("/customers", customerRoute);
-app.route("/custauth", loginCustomeRoute);
 app.route("/pembayaran", pembayaranRoute);
 app.route("/pppoe", pppoeRoute);
 
-app.route("/dashboard", dashboardRoute);
-
 //--INV--//
-app.route("/inv", invoiceRoute);
+app.route("/invoice", invoiceRoute);
 
 //--PEYMENT--//
 app.route("/payment", paymentRoute);

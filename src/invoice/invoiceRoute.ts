@@ -17,7 +17,7 @@ app.post("/generate1", checkUserToken(), async (c) => {
           success: false,
           message: "bulan, tahun dan dueDate wajib diisi.",
         },
-        400,
+        400
       );
     }
 
@@ -36,7 +36,7 @@ app.post("/generate1", checkUserToken(), async (c) => {
           success: false,
           message: "Tidak ada customer aktif.",
         },
-        404,
+        404
       );
     }
 
@@ -97,6 +97,7 @@ app.post("/generate1", checkUserToken(), async (c) => {
     return c.json(
       {
         success: true,
+        jumlah_invoice: invoices.length,
         data: invoices,
         pagination: {
           page: 1,
@@ -105,7 +106,7 @@ app.post("/generate1", checkUserToken(), async (c) => {
           totalPages: 1,
         },
       },
-      201,
+      201
     );
   } catch (err) {
     console.error(err);
@@ -115,7 +116,7 @@ app.post("/generate1", checkUserToken(), async (c) => {
         success: false,
         message: "Terjadi kesalahan pada server.",
       },
-      500,
+      500
     );
   }
 });
@@ -131,7 +132,7 @@ app.post("/generate", checkUserToken(), async (c) => {
           success: false,
           message: "bulan, tahun dan dueDate wajib diisi.",
         },
-        400,
+        400
       );
     }
 
@@ -150,7 +151,7 @@ app.post("/generate", checkUserToken(), async (c) => {
           success: false,
           message: "Tidak ada customer aktif.",
         },
-        404,
+        404
       );
     }
 
@@ -219,7 +220,7 @@ app.post("/generate", checkUserToken(), async (c) => {
           totalPages: 1,
         },
       },
-      201,
+      201
     );
   } catch (err) {
     console.error(err);
@@ -229,7 +230,7 @@ app.post("/generate", checkUserToken(), async (c) => {
         success: false,
         message: "Terjadi kesalahan pada server.",
       },
-      500,
+      500
     );
   }
 });
@@ -419,13 +420,14 @@ app.get("/", checkUserToken(), async (c) => {
 
     return c.json({
       success: true,
-      data,
+      jumlah: data.length,
       pagination: {
         page,
         limit,
         total,
         totalPages: Math.ceil(total / limit),
       },
+      data,
     });
   } catch (err) {
     console.error(err);
@@ -435,7 +437,7 @@ app.get("/", checkUserToken(), async (c) => {
         success: false,
         message: "Gagal mengambil invoice.",
       },
-      500,
+      500
     );
   }
 });
@@ -466,7 +468,7 @@ app.get("/:id", checkUserToken(), async (c) => {
           success: false,
           message: "Invoice tidak ditemukan.",
         },
-        404,
+        404
       );
     }
 
@@ -482,7 +484,7 @@ app.get("/:id", checkUserToken(), async (c) => {
         success: false,
         message: "Terjadi kesalahan.",
       },
-      500,
+      500
     );
   }
 });
@@ -516,7 +518,7 @@ app.get("/customer/:customerId", checkUserToken(), async (c) => {
       {
         success: false,
       },
-      500,
+      500
     );
   }
 });
@@ -539,7 +541,7 @@ app.patch("/:id/cancel", checkUserToken(), async (c) => {
           success: false,
           message: "Invoice tidak ditemukan.",
         },
-        404,
+        404
       );
     }
 
@@ -549,7 +551,7 @@ app.patch("/:id/cancel", checkUserToken(), async (c) => {
           success: false,
           message: "Invoice yang sudah dibayar tidak dapat dibatalkan.",
         },
-        400,
+        400
       );
     }
 
@@ -559,7 +561,7 @@ app.patch("/:id/cancel", checkUserToken(), async (c) => {
           success: false,
           message: "Invoice sudah memiliki transaksi pembayaran.",
         },
-        400,
+        400
       );
     }
 
@@ -585,7 +587,7 @@ app.patch("/:id/cancel", checkUserToken(), async (c) => {
         success: false,
         message: "Terjadi kesalahan.",
       },
-      500,
+      500
     );
   }
 });
@@ -607,7 +609,7 @@ app.patch("/:id/expired", checkUserToken(), async (c) => {
           success: false,
           message: "Invoice tidak ditemukan.",
         },
-        404,
+        404
       );
     }
 
@@ -617,7 +619,7 @@ app.patch("/:id/expired", checkUserToken(), async (c) => {
           success: false,
           message: "Invoice sudah dibayar.",
         },
-        400,
+        400
       );
     }
 
@@ -627,7 +629,7 @@ app.patch("/:id/expired", checkUserToken(), async (c) => {
           success: false,
           message: "Invoice telah dibatalkan.",
         },
-        400,
+        400
       );
     }
 
@@ -637,7 +639,7 @@ app.patch("/:id/expired", checkUserToken(), async (c) => {
           success: false,
           message: "Invoice belum melewati jatuh tempo.",
         },
-        400,
+        400
       );
     }
 
@@ -663,7 +665,7 @@ app.patch("/:id/expired", checkUserToken(), async (c) => {
         success: false,
         message: "Terjadi kesalahan.",
       },
-      500,
+      500
     );
   }
 });
@@ -722,7 +724,7 @@ app.get("/me", checkCustomerToken(), async (c) => {
         success: false,
         message: "Gagal mengambil invoice.",
       },
-      500,
+      500
     );
   }
 });
