@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { prisma } from "../../lib/prisma";
 import crypto from "crypto";
 import { coreApi, snap } from "../util/midtrans";
+import { verifyMidtransSignature } from "../midleware/verifyMidtrans";
 import {
   PaymentStatus,
   InvoiceStatus,
@@ -91,9 +92,11 @@ app.post("/payments/charge", async (c) => {
 });
 
 // --- 2. ENDPOINT: WEBHOOK NOTIFIKASI DARI MIDTRANS ---
-app.post("/payments/notification", async (c) => {
+app.post("/payments/notification", verifyMidtransSignature(), async (c) => {
   try {
-    const notificationJson = await c.req.json();
+    // Ambil payload yang sudah di-parse oleh middleware
+    const notificationJson =
+      (c as any).get("midtransPayload") ?? (await c.req.json());
 
     // Payload asli dari Midtrans menggunakan 'order_id'
     const orderId = notificationJson.order_id;
