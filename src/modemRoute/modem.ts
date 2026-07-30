@@ -14,7 +14,7 @@ app.get("/all", checkUserToken(), async (c) => {
         serial: true,
         _count: {
           select: {
-            customer: true,
+            customers: true,
           },
         },
       },
@@ -107,17 +107,10 @@ app.get("/", checkUserToken(), async (c) => {
       where,
 
       include: {
-        customer: {
-          include: {
-            paket: true,
-            area: true,
-            odp: true,
-            modem: true,
-          },
-        },
+        customers: true,
         _count: {
           select: {
-            customer: true,
+            customers: true,
           },
         },
       },
@@ -133,7 +126,7 @@ app.get("/", checkUserToken(), async (c) => {
 
     return c.json({
       success: true,
-      message: "Data paket berhasil diambil.",
+      message: "Data Modem berhasil diambil.",
 
       data: modem,
 
@@ -150,7 +143,7 @@ app.get("/", checkUserToken(), async (c) => {
     return c.json(
       {
         success: false,
-        message: "Gagal mengambil data pembayaran.",
+        message: "Gagal mengambil data Modem.",
       },
       500,
     );

@@ -30,6 +30,9 @@ import oltOnuRoute from "./src/oltRoute/onuOlt";
 // ---Dashboard---//
 import dashboardRoute from "./src/dashboard/dashboard";
 
+// Ensure required environment variables are present before starting
+import { ensureEnvVars } from "./lib/env";
+
 import { serveStatic } from "hono/bun";
 
 type Bindings = {
@@ -49,6 +52,7 @@ export type HonoApp = {
 
 const app = new Hono<HonoApp>();
 
+// CORS: izinkan akses dari IP dan domain frontend
 // CORS: izinkan akses dari IP dan domain frontend
 app.use(
   "*",
@@ -71,8 +75,9 @@ app.use(
     allowHeaders: ["Authorization", "Content-Type", "X-Requested-With"],
     allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     credentials: true,
-  })
+  }),
 );
+
 app.use("/uploads/*", serveStatic({ root: "./" }));
 app.use("/foto", serveStatic({ root: "/home/teranet" }));
 app.get("/", (c) => {

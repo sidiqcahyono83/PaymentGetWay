@@ -8,6 +8,11 @@ export interface TokenPayload {
 }
 
 const getSecret = async () => {
+  const secretValue = process.env.TOKEN_SECRET;
+  if (!secretValue) {
+    throw new Error("TOKEN_SECRET is not set in environment variables");
+  }
+
   const encoder = new TextEncoder();
   const uint8Array = encoder.encode(process.env.TOKEN_SECRET);
   return uint8Array.buffer as ArrayBuffer;

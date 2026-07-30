@@ -6,6 +6,7 @@ import { verifyPassword } from "../../lib/password";
 import { createToken } from "../../lib/jwt";
 import { deleteCookie, setCookie } from "hono/cookie";
 import { checkUserToken } from "../midleware/cekUserToken";
+import { cookieOptions } from "../../lib/env";
 
 export type Variables = {
   user: {
@@ -25,7 +26,7 @@ app.post(
     z.object({
       username: z.string(),
       password: z.string(),
-    }),
+    })
   ),
   async (c) => {
     const body = c.req.valid("json");
@@ -49,7 +50,7 @@ app.post(
 
     const validPassword = await verifyPassword(
       foundUser.password.hash,
-      body.password,
+      body.password
     );
 
     if (!validPassword) {
@@ -66,18 +67,19 @@ app.post(
         {
           message: "Token failed to create",
         },
-        500,
+        500
       );
     }
+    setCookie(c, "token", token, cookieOptions());
 
-    setCookie(c, "token", token, {
-      httpOnly: true,
-      secure: false,
-      sameSite: "lax",
-      path: "/",
-      maxAge: 60 * 60,
-    });
-    console.log("JWT:", token);
+    // setCookie(c, "token", token, {
+    //   httpOnly: true,
+    //   secure: false,
+    //   sameSite: "lax",
+    //   path: "/",
+    //   maxAge: 60 * 60,
+    // });
+    // console.log("JWT:", token);
 
     return c.json({
       success: true,
@@ -89,7 +91,7 @@ app.post(
         level: foundUser.level,
       },
     });
-  },
+  }
 );
 
 app.get("/me", checkUserToken(), async (c) => {
@@ -112,7 +114,7 @@ app.get("/me", checkUserToken(), async (c) => {
       {
         message: "User not found",
       },
-      404,
+      404
     );
   }
 
