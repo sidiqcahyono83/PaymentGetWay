@@ -1,0 +1,44 @@
+version: "3.8"
+
+services:
+  database:
+    image: mysql:8.0
+    env_file:
+      - .env
+    environment:
+      # Jika .env sudah memiliki nilai-nilai ini, env_file akan melewatkannya.
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${DATABASE_NAME}
+      MYSQL_USER: ${DATABASE_USER}
+      MYSQL_PASSWORD: ${DATABASE_PASSWORD}
+    ports:
+      - "3306:3306"
+    volumes:
+      - db-data:/var/lib/mysql
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      - database
+    env_file:
+      - .env
+    working_dir: /workspace
+    # Untuk development: mount current folder agar perubahan langsung terlihat.
+    # Hapus atau ubah pada environment production.
+    volumes:
+      - ./:/workspace
+      - ./uploads:/workspace/uploads
+    ports:
+      - "3001:3001"
+    restart: unless-stopped
+
+volumes:
+  db-data:
