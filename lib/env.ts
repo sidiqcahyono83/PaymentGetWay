@@ -31,9 +31,9 @@ export const cookieOptions = (
   return {
     httpOnly: true,
     secure: isProduction,
-    sameSite: "lax",
+    sameSite: process.env.NODE_ENV === "production" ? "None" : "Lax",
     path: "/",
-    maxAge: 60 * 60,
+    maxAge: 60 * 60 * 24,
     ...overrides,
   };
 };

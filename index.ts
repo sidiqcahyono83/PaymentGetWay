@@ -62,8 +62,8 @@ app.use(
         "http://103.63.26.87",
         "http://192.168.4.5",
         "http://192.168.4.9",
-        "http://teranet.my.id",
-        "https://teranet.my.id",
+        "http://teranet.web.id",
+        "https://teranet.web.id",
         "http://localhost:5173",
         "http://localhost:5174",
       ];

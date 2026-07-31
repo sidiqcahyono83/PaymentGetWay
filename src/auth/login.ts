@@ -27,6 +27,19 @@ app.post(
       username: z.string(),
       password: z.string(),
     }),
+    (result, c) => {
+      // Custom handler agar pesan ZodError dikirim rapi ke Frontend
+      if (!result.success) {
+        return c.json(
+          {
+            success: false,
+            message: "Format input tidak valid",
+            error: result.error,
+          },
+          400,
+        );
+      }
+    },
   ),
   async (c) => {
     const body = c.req.valid("json");
@@ -37,15 +50,14 @@ app.post(
     });
 
     if (!foundUser) {
-      c.status(404);
-      return c.json({ message: "Cannot login because user not found" });
+      return c.json({ message: "Cannot login because user not found" }, 404);
     }
 
     if (!foundUser?.password?.hash) {
-      c.status(400);
-      return c.json({
-        message: "Cannot login because user doesn't have a password",
-      });
+      return c.json(
+        { message: "Cannot login because user doesn't have a password" },
+        400,
+      );
     }
 
     const validPassword = await verifyPassword(
@@ -54,32 +66,17 @@ app.post(
     );
 
     if (!validPassword) {
-      c.status(400);
-      return c.json({
-        message: "Password incorrect",
-      });
+      return c.json({ message: "Password incorrect" }, 400);
     }
 
     const token = await createToken(foundUser.id);
 
     if (!token) {
-      return c.json(
-        {
-          message: "Token failed to create",
-        },
-        500,
-      );
+      return c.json({ message: "Token failed to create" }, 500);
     }
-    setCookie(c, "token", token, cookieOptions());
 
-    // setCookie(c, "token", token, {
-    //   httpOnly: true,
-    //   secure: false,
-    //   sameSite: "lax",
-    //   path: "/",
-    //   maxAge: 60 * 60,
-    // });
-    // console.log("JWT:", token);
+    // Set Cookie dengan konfigurasi aman
+    setCookie(c, "token", token, cookieOptions());
 
     return c.json({
       success: true,
@@ -110,20 +107,18 @@ app.get("/me", checkUserToken(), async (c) => {
   });
 
   if (!data) {
-    return c.json(
-      {
-        message: "User not found",
-      },
-      404,
-    );
+    return c.json({ message: "User not found" }, 404);
   }
 
   return c.json(data);
 });
 
 app.post("/logout", (c) => {
+  // Opsi deleteCookie harus persis sama opsi path & sameSite saat setCookie
   deleteCookie(c, "token", {
     path: "/",
+    secure: process.env.NODE_ENV === "production",
+    sameSite: process.env.NODE_ENV === "production" ? "None" : "Lax",
   });
 
   return c.json({
