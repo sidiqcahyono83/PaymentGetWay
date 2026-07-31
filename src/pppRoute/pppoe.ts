@@ -108,11 +108,13 @@ app.get("/nonactiveDisable", async (c) => {
   }
 });
 
-// interface UserPppoe {
-//   username: string;
-//   password: string;
-//   profile: string;
-// }
+/* interface UserPppoe {
+{
+    "username":"rafasya",
+    "password":"rafasya123",
+    "profile":"Unlimited1-30Mbps"
+}
+*/
 
 // Endpoint untuk membuat PPPoE user
 app.post("/createppp", async (c) => {
@@ -189,14 +191,14 @@ app.post("/disableppp", async (c) => {
 //Enable
 app.post("/enableppp", async (c) => {
   try {
-    const { username } = await c.req.json();
+    const username = await c.req.json();
 
     if (!username) {
       console.error("No username provided");
       return c.json({ message: "Username is required" }, 400);
     }
 
-    console.log("Mengirim request ke PHP API dengan username:", username);
+    // console.log("Mengirim request ke PHP API dengan username:", username);
 
     const response = await fetch(`${phpurl}/enable.php`, {
       method: "POST",
