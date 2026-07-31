@@ -34,7 +34,7 @@ CREATE TABLE `Customer` (
     `ontName` VARCHAR(191) NULL,
     `redamanOlt` VARCHAR(191) NULL,
     `diskon` INTEGER NOT NULL DEFAULT 0,
-    `status` ENUM('ACTIVE', 'SUSPENDED', 'TERMINATED') NOT NULL DEFAULT 'ACTIVE',
+    `status` ENUM('ACTIVE', 'SUSPENDED', 'TERMINATED', 'PENDING') NOT NULL DEFAULT 'PENDING',
     `paketId` VARCHAR(191) NULL,
     `areaId` VARCHAR(191) NULL,
     `odpId` VARCHAR(191) NULL,
@@ -155,7 +155,7 @@ CREATE TABLE `Payment` (
     `method` ENUM('CASH', 'BANK_TRANSFER', 'QRIS', 'VIRTUAL_ACCOUNT', 'E_WALLET') NOT NULL,
     `gateway` ENUM('MANUAL', 'MIDTRANS', 'XENDIT', 'TRIPAY', 'DUITKU') NOT NULL DEFAULT 'MANUAL',
     `status` ENUM('PENDING', 'WAITING_VERIFICATION', 'SUCCESS', 'FAILED', 'EXPIRED', 'REJECTED', 'CANCELLED') NOT NULL DEFAULT 'PENDING',
-    `gatewayTransactionId` VARCHAR(191) NULL,
+    `orderId` VARCHAR(191) NULL,
     `paymentCode` VARCHAR(191) NULL,
     `paymentUrl` VARCHAR(191) NULL,
     `snapToken` VARCHAR(191) NULL,
@@ -169,7 +169,7 @@ CREATE TABLE `Payment` (
     `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
     `updatedAt` DATETIME(3) NOT NULL,
 
-    UNIQUE INDEX `Payment_gatewayTransactionId_key`(`gatewayTransactionId`),
+    UNIQUE INDEX `Payment_orderId_key`(`orderId`),
     INDEX `Payment_status_idx`(`status`),
     INDEX `Payment_customerId_idx`(`customerId`),
     INDEX `Payment_invoiceId_idx`(`invoiceId`),
@@ -239,7 +239,7 @@ CREATE TABLE `PaymentMethodAccount` (
 -- CreateTable
 CREATE TABLE `Pendapatan` (
     `id` VARCHAR(191) NOT NULL,
-    `paymentId` VARCHAR(191) NOT NULL,
+    `paymentId` VARCHAR(191) NULL,
     `userId` VARCHAR(191) NULL,
     `total` DOUBLE NOT NULL,
     `deskripsi` VARCHAR(191) NULL,
