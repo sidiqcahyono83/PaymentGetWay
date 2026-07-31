@@ -563,6 +563,7 @@ app.post("/seed-customer", checkUserToken(), async (c) => {
 
           // Data payload yang akan di-insert/update
           const customerData = {
+            id: item.id,
             username: item.username,
             fullname: item.fullname,
             email: item.email,

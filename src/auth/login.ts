@@ -26,7 +26,7 @@ app.post(
     z.object({
       username: z.string(),
       password: z.string(),
-    })
+    }),
   ),
   async (c) => {
     const body = c.req.valid("json");
@@ -50,7 +50,7 @@ app.post(
 
     const validPassword = await verifyPassword(
       foundUser.password.hash,
-      body.password
+      body.password,
     );
 
     if (!validPassword) {
@@ -67,7 +67,7 @@ app.post(
         {
           message: "Token failed to create",
         },
-        500
+        500,
       );
     }
     setCookie(c, "token", token, cookieOptions());
@@ -91,7 +91,7 @@ app.post(
         level: foundUser.level,
       },
     });
-  }
+  },
 );
 
 app.get("/me", checkUserToken(), async (c) => {
@@ -114,7 +114,7 @@ app.get("/me", checkUserToken(), async (c) => {
       {
         message: "User not found",
       },
-      404
+      404,
     );
   }
 

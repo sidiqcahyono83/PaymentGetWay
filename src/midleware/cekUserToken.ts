@@ -3,7 +3,6 @@ import { getCookie } from "hono/cookie";
 import type { Variables } from "../type/hono";
 import { validateToken } from "../../lib/jwt";
 
-
 export const checkUserToken = () => {
   return createMiddleware<{
     Variables: Variables;
