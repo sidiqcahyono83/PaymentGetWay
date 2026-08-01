@@ -31,7 +31,7 @@ export const cookieOptions = (
   return {
     httpOnly: true,
     secure: false,
-    sameSite: "strict",
+    sameSite: "Lax",
     path: "/",
     maxAge: 60 * 60 * 24,
     ...overrides,
