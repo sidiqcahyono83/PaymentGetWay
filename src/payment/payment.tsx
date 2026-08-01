@@ -1,14 +1,14 @@
 import { Hono } from "hono";
-import { checkUserToken } from "../midleware/cekUserToken";
-import { prisma } from "../../lib/prisma";
 import { existsSync, mkdirSync, unlinkSync } from "node:fs";
 import {
-  PaymentMethod,
+  CustomerStatus,
   InvoiceStatus,
+  PaymentMethod,
   PaymentStatus,
   VerificationStatus,
-  CustomerStatus,
 } from "../../generated/prisma/client";
+import { prisma } from "../../lib/prisma";
+import { checkUserToken } from "../midleware/cekUserToken";
 
 const app = new Hono();
 
@@ -30,7 +30,7 @@ app.post("/", checkUserToken(), async (c) => {
           success: false,
           message: "invoiceId dan method wajib diisi.",
         },
-        400
+        400,
       );
     }
 
@@ -41,7 +41,7 @@ app.post("/", checkUserToken(), async (c) => {
           success: false,
           message: "Metode pembayaran tidak valid.",
         },
-        400
+        400,
       );
     }
 
@@ -60,7 +60,7 @@ app.post("/", checkUserToken(), async (c) => {
           success: false,
           message: "Invoice tidak ditemukan.",
         },
-        404
+        404,
       );
     }
 
@@ -70,7 +70,7 @@ app.post("/", checkUserToken(), async (c) => {
           success: false,
           message: "Invoice sudah dibayar.",
         },
-        400
+        400,
       );
     }
 
@@ -89,7 +89,7 @@ app.post("/", checkUserToken(), async (c) => {
           success: false,
           message: "Masih ada pembayaran yang diproses.",
         },
-        400
+        400,
       );
     }
 
@@ -201,7 +201,7 @@ app.post("/", checkUserToken(), async (c) => {
           : "Pembayaran berhasil dibuat (menunggu pembayaran).",
         data: payment,
       },
-      201
+      201,
     );
   } catch (err) {
     console.error(err);
@@ -211,7 +211,7 @@ app.post("/", checkUserToken(), async (c) => {
         success: false,
         message: "Terjadi kesalahan pada server.",
       },
-      500
+      500,
     );
   }
 });
@@ -242,7 +242,7 @@ app.post("/:id/attachment", checkUserToken(), async (c) => {
           success: false,
           message: "File wajib diupload.",
         },
-        400
+        400,
       );
     }
 
@@ -259,7 +259,7 @@ app.post("/:id/attachment", checkUserToken(), async (c) => {
           success: false,
           message: "Format file harus berupa JPG, PNG, atau PDF.",
         },
-        400
+        400,
       );
     }
 
@@ -270,7 +270,7 @@ app.post("/:id/attachment", checkUserToken(), async (c) => {
           success: false,
           message: "Ukuran file maksimal 5MB.",
         },
-        400
+        400,
       );
     }
 
@@ -285,7 +285,7 @@ app.post("/:id/attachment", checkUserToken(), async (c) => {
           success: false,
           message: "Payment tidak ditemukan.",
         },
-        404
+        404,
       );
     }
 
@@ -295,7 +295,7 @@ app.post("/:id/attachment", checkUserToken(), async (c) => {
           success: false,
           message: "Payment tidak dalam status PENDING.",
         },
-        400
+        400,
       );
     }
 
@@ -357,7 +357,7 @@ app.post("/:id/attachment", checkUserToken(), async (c) => {
         success: false,
         message: "Terjadi kesalahan pada server saat mengunggah berkas.",
       },
-      500
+      500,
     );
   }
 });
@@ -379,7 +379,7 @@ app.patch("/:id/verify", checkUserToken(), async (c) => {
           success: false,
           message: "Status verifikasi tidak valid.",
         },
-        400
+        400,
       );
     }
 
@@ -399,7 +399,7 @@ app.patch("/:id/verify", checkUserToken(), async (c) => {
           success: false,
           message: "Payment tidak ditemukan.",
         },
-        404
+        404,
       );
     }
 
@@ -409,7 +409,7 @@ app.patch("/:id/verify", checkUserToken(), async (c) => {
           success: false,
           message: "Payment tidak menunggu verifikasi.",
         },
-        400
+        400,
       );
     }
 
@@ -516,12 +516,12 @@ app.patch("/:id/verify", checkUserToken(), async (c) => {
         success: false,
         message: "Terjadi kesalahan pada server.",
       },
-      500
+      500,
     );
   }
 });
 
-app.get("/", checkUserToken(), async (c) => {
+app.get("/all", checkUserToken(), async (c) => {
   try {
     const payment = await prisma.payment.findMany({
       include: {
@@ -535,6 +535,93 @@ app.get("/", checkUserToken(), async (c) => {
     return c.json(payment);
   } catch (error) {
     console.error(error);
+  }
+});
+
+app.get("/", checkUserToken(), async (c) => {
+  try {
+    // 1. Ambil query parameter dari frontend dengan nilai default
+    const page = parseInt(c.req.query("page") || "1");
+    const limit = parseInt(c.req.query("limit") || "10");
+    const search = c.req.query("search") || "";
+
+    const skip = (page - 1) * limit;
+
+    // 2. Buat kondisi pencarian (search)
+    // Menyesuaikan pencarian berdasarkan nama customer atau nomor invoice
+    const whereCondition = search
+      ? {
+          OR: [
+            {
+              customer: {
+                fullname: {
+                  contains: search,
+                  mode: "insensitive" as const,
+                },
+              },
+            },
+            {
+              invoice: {
+                invoiceNumber: {
+                  contains: search,
+                  mode: "insensitive" as const,
+                },
+              },
+            },
+          ],
+        }
+      : {};
+
+    // 3. Jalankan query database (mengambil data & total data secara bersamaan)
+    const [payments, total] = await Promise.all([
+      prisma.payment.findMany({
+        where: whereCondition,
+        include: {
+          customer: true,
+          createdBy: true,
+          pendapatan: true,
+          verification: true,
+          attachments: true,
+          invoice: true, // Dimasukkan agar nomor invoice bisa ikut tersaring/ditampilkan
+        },
+        orderBy: {
+          createdAt: "desc",
+        },
+        skip: skip,
+        take: limit,
+      }),
+      prisma.payment.count({
+        where: whereCondition,
+      }),
+    ]);
+
+    const totalPages = Math.ceil(total / limit);
+
+    // 4. Return response yang mencakup data dan format pagination sesuai frontend
+    return c.json(
+      {
+        success: true,
+        message: "Berhasil mengambil data pembayaran.",
+        data: payments,
+        pagination: {
+          page,
+          limit,
+          total,
+          totalPages,
+        },
+      },
+      200,
+    );
+  } catch (error) {
+    console.error("Gagal mengambil data pembayaran:", error);
+
+    return c.json(
+      {
+        success: false,
+        message: "Terjadi kesalahan pada server.",
+      },
+      500,
+    );
   }
 });
 
@@ -567,7 +654,7 @@ app.post("/manual/attachment", checkUserToken(), async (c) => {
           success: false,
           message: "invoiceId dan method wajib diisi.",
         },
-        400
+        400,
       );
     }
 
@@ -578,7 +665,7 @@ app.post("/manual/attachment", checkUserToken(), async (c) => {
           success: false,
           message: "Metode pembayaran tidak valid.",
         },
-        400
+        400,
       );
     }
 
@@ -593,7 +680,7 @@ app.post("/manual/attachment", checkUserToken(), async (c) => {
             message:
               "Metode pembayaran transfer wajib menyertakan file bukti transfer.",
           },
-          400
+          400,
         );
       }
 
@@ -610,7 +697,7 @@ app.post("/manual/attachment", checkUserToken(), async (c) => {
             success: false,
             message: "Format file harus berupa JPG, PNG, atau PDF.",
           },
-          400
+          400,
         );
       }
 
@@ -622,7 +709,7 @@ app.post("/manual/attachment", checkUserToken(), async (c) => {
             success: false,
             message: "Ukuran file maksimal 3MB.",
           },
-          400
+          400,
         );
       }
     }
@@ -643,7 +730,7 @@ app.post("/manual/attachment", checkUserToken(), async (c) => {
           success: false,
           message: "Invoice tidak ditemukan.",
         },
-        404
+        404,
       );
     }
 
@@ -653,7 +740,7 @@ app.post("/manual/attachment", checkUserToken(), async (c) => {
           success: false,
           message: "Invoice sudah dibayar.",
         },
-        400
+        400,
       );
     }
 
@@ -673,7 +760,7 @@ app.post("/manual/attachment", checkUserToken(), async (c) => {
           success: false,
           message: "Masih ada pembayaran yang diproses.",
         },
-        400
+        400,
       );
     }
 
@@ -817,7 +904,7 @@ app.post("/manual/attachment", checkUserToken(), async (c) => {
           : "Pembayaran transfer berhasil dibuat & menunggu verifikasi.",
         data: payment,
       },
-      201
+      201,
     );
   } catch (err) {
     // Hapus file fisik jika terjadi error pada database transaction
@@ -836,7 +923,7 @@ app.post("/manual/attachment", checkUserToken(), async (c) => {
         success: false,
         message: "Terjadi kesalahan pada server.",
       },
-      500
+      500,
     );
   }
 });
@@ -850,7 +937,7 @@ app.post("/gateway", checkUserToken(), async (c) => {
     if (!invoiceId || !method) {
       return c.json(
         { success: false, message: "invoiceId dan method wajib diisi." },
-        400
+        400,
       );
     }
 
@@ -863,7 +950,7 @@ app.post("/gateway", checkUserToken(), async (c) => {
     if (!invoice) {
       return c.json(
         { success: false, message: "Invoice tidak ditemukan." },
-        404
+        404,
       );
     }
 
@@ -885,7 +972,7 @@ app.post("/gateway", checkUserToken(), async (c) => {
           success: false,
           message: "Masih ada pembayaran yang sedang diproses.",
         },
-        400
+        400,
       );
     }
 
@@ -917,13 +1004,13 @@ app.post("/gateway", checkUserToken(), async (c) => {
           paymentUrl: paymentUrl, // URL untuk di-redirect oleh Frontend
         },
       },
-      201
+      201,
     );
   } catch (err: any) {
     console.error(err);
     return c.json(
       { success: false, message: err.message || "Terjadi kesalahan server." },
-      500
+      500,
     );
   }
 });
