@@ -78,6 +78,19 @@ app.post(
     // Set Cookie dengan konfigurasi aman
     setCookie(c, "token", token, cookieOptions());
 
+    // setCookie(
+    //   c,
+    //   "token",
+    //   token,
+    //   cookieOptions({
+    //     httpOnly: true,
+    //     secure: false,
+    //     sameSite: "strict",
+    //     path: "/",
+    //     maxAge: 60 * 60 * 24,
+    //   }),
+    // );
+
     return c.json({
       success: true,
       message: "Login successful",

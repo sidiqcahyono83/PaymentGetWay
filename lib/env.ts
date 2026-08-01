@@ -30,8 +30,8 @@ export const cookieOptions = (
 ): CookieOptions => {
   return {
     httpOnly: true,
-    secure: isProduction,
-    sameSite: process.env.NODE_ENV === "production" ? "None" : "Lax",
+    secure: false,
+    sameSite: "strict",
     path: "/",
     maxAge: 60 * 60 * 24,
     ...overrides,

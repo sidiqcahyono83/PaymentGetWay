@@ -36,8 +36,8 @@ export const checkUserToken = () => {
     });
 
     await next();
-    // console.log("Origin:", c.req.header("origin"));
-    // console.log("Host:", c.req.header("host"));
-    // console.log("Cookie:", c.req.header("cookie"));
+    console.log("Origin:", c.req.header("origin"));
+    console.log("Host:", c.req.header("host"));
+    console.log("Cookie:", c.req.header("cookie"));
   });
 };
