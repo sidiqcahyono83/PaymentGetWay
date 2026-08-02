@@ -1,7 +1,7 @@
 import type { CustomerStatus } from "../../generated/prisma/client";
 
 export interface CustomerInput {
-  id?: string;
+  id: string;
   username: string;
   fullname: string;
   email?: string | null;

@@ -1,10 +1,10 @@
 import { Hono } from "hono";
-import { prisma } from "../../lib/prisma";
-import { phpurl } from "../../lib/php";
 import z from "zod";
 import { CustomerStatus } from "../../generated/prisma/client";
-import { checkUserToken } from "../midleware/cekUserToken";
 import { hashPassword } from "../../lib/password";
+import { phpurl } from "../../lib/php";
+import { prisma } from "../../lib/prisma";
+import { checkUserToken } from "../midleware/cekUserToken";
 import { checkCustomerToken } from "../midleware/checkCustomerToken";
 import { data } from "./cus";
 
@@ -15,15 +15,15 @@ app.get("/all", checkUserToken(), async (c) => {
 
   try {
     const customers = await prisma.customer.findMany({
-      where: {
-        area: {
-          users: {
-            some: {
-              id: user.id,
-            },
-          },
-        },
-      },
+      // where: {
+      //   area: {
+      //     users: {
+      //       some: {
+      //         id: user.id,
+      //       },
+      //     },
+      //   },
+      // },
       select: {
         id: true,
         username: true,
@@ -514,130 +514,130 @@ app.get("/", checkCustomerToken(), async (c) => {
 //---CREATE-MANY--//
 app.post("/seed-customer", checkUserToken(), async (c) => {
   try {
-    const resultCount = await prisma.$transaction(
-      async (tx) => {
-        // 1. Ambil semua ID master yang ada di DB untuk validasi FK
-        const existingPaketIds = new Set(
-          (await tx.paket.findMany({ select: { id: true } })).map((x) => x.id),
-        );
-        const existingAreaIds = new Set(
-          (await tx.area.findMany({ select: { id: true } })).map((x) => x.id),
-        );
-        const existingOdpIds = new Set(
-          (await tx.odp.findMany({ select: { id: true } })).map((x) => x.id),
-        );
-        const existingModemIds = new Set(
-          (await tx.modem.findMany({ select: { id: true } })).map((x) => x.id),
-        );
-        const existingOltIds = new Set(
-          (await tx.olt.findMany({ select: { id: true } })).map((x) => x.id),
-        );
+    const parseDate = (value?: string | Date | null): Date | undefined => {
+      if (!value) return undefined;
 
-        let processedCount = 0;
+      if (value instanceof Date) {
+        return isNaN(value.getTime()) ? undefined : value;
+      }
 
-        for (const item of data) {
-          const createdAt = item.createdAt
-            ? new Date(item.createdAt)
-            : undefined;
-          const updatedAt = item.updatedAt
-            ? new Date(item.updatedAt)
-            : undefined;
+      const date = new Date(value);
 
-          // Validasi Foreign Keys
-          const paketId =
-            item.paketId && existingPaketIds.has(item.paketId)
-              ? item.paketId
-              : null;
-          const areaId =
-            item.areaId && existingAreaIds.has(item.areaId)
-              ? item.areaId
-              : null;
-          const odpId =
-            item.odpId && existingOdpIds.has(item.odpId) ? item.odpId : null;
-          const modemId =
-            item.modemId && existingModemIds.has(item.modemId)
-              ? item.modemId
-              : null;
-          const oltId =
-            item.oltId && existingOltIds.has(item.oltId) ? item.oltId : null;
+      return isNaN(date.getTime()) ? undefined : date;
+    };
 
-          // Data payload yang akan di-insert/update
-          const customerData = {
-            id: item.id,
-            username: item.username,
-            fullname: item.fullname,
-            email: item.email,
-            phoneNumber: item.phoneNumber,
-            address: item.address,
-            ontName: item.ontName,
-            redamanOlt: item.redamanOlt,
-            diskon: item.diskon,
-            status: item.status,
-            paketId,
-            areaId,
-            odpId,
-            modemId,
-            oltId,
-            createdAt,
-            updatedAt,
-          };
+    // ===========================
+    // Ambil Master Data Sekali
+    // ===========================
 
-          // Hash password jika disediakan
-          const passwordHash = item.password
-            ? await hashPassword(item.password)
-            : null;
+    const [pakets, areas, odps, modems, olts] = await Promise.all([
+      prisma.paket.findMany({ select: { id: true } }),
+      prisma.area.findMany({ select: { id: true } }),
+      prisma.odp.findMany({ select: { id: true } }),
+      prisma.modem.findMany({ select: { id: true } }),
+      prisma.olt.findMany({ select: { id: true } }),
+    ]);
 
-          // 2. Gunakan UPSERT berdasarkan ID (atau username jika ID dari item tidak pasti)
-          const customer = await tx.customer.upsert({
-            where: { id: item.id },
-            update: customerData,
-            create: {
-              ...customerData,
-              id: item.id,
-              ...(passwordHash && {
-                password: {
-                  create: {
-                    hash: passwordHash,
-                  },
-                },
-              }),
-            },
-          });
+    const existingPaketIds = new Set(pakets.map((x) => x.id));
+    const existingAreaIds = new Set(areas.map((x) => x.id));
+    const existingOdpIds = new Set(odps.map((x) => x.id));
+    const existingModemIds = new Set(modems.map((x) => x.id));
+    const existingOltIds = new Set(olts.map((x) => x.id));
 
-          // 3. Jika password diupdate pada seeder & CustomerPassword sudah ada
-          if (passwordHash && customer) {
-            await tx.customerPassword.upsert({
-              where: { customerId: customer.id },
-              update: { hash: passwordHash },
-              create: {
-                customerId: customer.id,
-                hash: passwordHash,
-              },
-            });
-          }
+    // ===========================
+    // Hash Password Paralel
+    // ===========================
 
-          processedCount++;
-        }
-
-        return processedCount;
-      },
-      {
-        timeout: 60000, // Timeout 60 detik untuk pemrosesan seeder yang aman
-      },
+    const prepared = await Promise.all(
+      data.map(async (item) => ({
+        ...item,
+        passwordHash: item.password ? await hashPassword(item.password) : null,
+      })),
     );
+
+    // ===========================
+    // Data Customer
+    // ===========================
+
+    const customers = prepared.map((item) => {
+      const status =
+        CustomerStatus[item.status as keyof typeof CustomerStatus] ??
+        CustomerStatus.PENDING;
+
+      return {
+        id: item.id,
+        username: item.username,
+        fullname: item.fullname,
+        email: item.email,
+        phoneNumber: item.phoneNumber,
+        address: item.address,
+        ontName: item.ontName,
+        redamanOlt: item.redamanOlt,
+        diskon: item.diskon ?? 0,
+        status,
+
+        paketId:
+          item.paketId && existingPaketIds.has(item.paketId)
+            ? item.paketId
+            : null,
+
+        areaId:
+          item.areaId && existingAreaIds.has(item.areaId) ? item.areaId : null,
+
+        odpId: item.odpId && existingOdpIds.has(item.odpId) ? item.odpId : null,
+
+        modemId:
+          item.modemId && existingModemIds.has(item.modemId)
+            ? item.modemId
+            : null,
+
+        oltId: item.oltId && existingOltIds.has(item.oltId) ? item.oltId : null,
+
+        createdAt: parseDate(item.createdAt),
+      };
+    });
+
+    // ===========================
+    // Insert Customer
+    // ===========================
+
+    await prisma.customer.createMany({
+      data: customers,
+      skipDuplicates: true,
+    });
+
+    // ===========================
+    // Password
+    // ===========================
+
+    const passwords = prepared
+      .filter((x) => x.passwordHash)
+      .map((item) => ({
+        customerId: item.id,
+        hash: item.passwordHash!,
+      }));
+
+    await prisma.customerPassword.createMany({
+      data: passwords,
+      skipDuplicates: true,
+    });
 
     return c.json(
       {
-        message: "Default Customers seeded/upserted successfully.",
-        count: resultCount,
+        success: true,
+        message: "Customer berhasil diimport.",
+        totalCustomer: customers.length,
+        totalPassword: passwords.length,
       },
       201,
     );
   } catch (error) {
-    console.error("Error seeding customers:", error);
+    console.error(error);
+
     return c.json(
       {
-        message: "Failed to seed default Customers.",
+        success: false,
+        message: "Import customer gagal.",
         error: error instanceof Error ? error.message : String(error),
       },
       500,
