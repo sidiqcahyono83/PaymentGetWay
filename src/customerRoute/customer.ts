@@ -58,6 +58,7 @@ app.get("/:id", async (c) => {
         id: id,
       },
       include: {
+        payments: true,
         paket: true,
         area: true,
         odp: true,

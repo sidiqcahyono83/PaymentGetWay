@@ -29,20 +29,41 @@ app.get("/all", checkUserToken(), async (c) => {
 
 app.post("/", checkUserToken(), async (c) => {
   const body = await c.req.json();
-  const { name, rasio, passiveSpliter } = body;
+  const { name, rasio, passiveSpliter, areaId, customerIds } = body;
+
   try {
     const odp = await prisma.odp.create({
       data: {
         name,
         rasio,
         passiveSpliter,
+
+        area: areaId
+          ? {
+              connect: {
+                id: areaId,
+              },
+            }
+          : undefined,
+
+        customers: customerIds?.length
+          ? {
+              connect: customerIds.map((id: string) => ({
+                id,
+              })),
+            }
+          : undefined,
+      },
+      include: {
+        area: true,
+        customers: true,
       },
     });
 
     return c.json({ odp }, 201);
   } catch (error) {
     console.error(error);
-    return c.json({ message: "Failed to create odp." }, 500);
+    return c.json({ message: "Failed to create ODP." }, 500);
   }
 });
 app.patch("/:id", async (c) => {
@@ -65,7 +86,7 @@ app.patch("/:id", async (c) => {
           success: false,
           message: "ODP tidak ditemukan.",
         },
-        404
+        404,
       );
     }
 
@@ -78,7 +99,13 @@ app.patch("/:id", async (c) => {
         name,
         rasio,
         passiveSpliter,
-        areaId: areaId || null,
+        area: areaId
+          ? {
+              connect: {
+                id: areaId,
+              },
+            }
+          : undefined,
       },
     });
 
@@ -109,7 +136,7 @@ app.patch("/:id", async (c) => {
         },
       });
     }
-
+    console.log("ODP updated successfully:", odp);
     /**
      * Ambil kembali data lengkap
      */
@@ -146,7 +173,7 @@ app.patch("/:id", async (c) => {
         success: false,
         message: "Gagal memperbarui ODP.",
       },
-      500
+      500,
     );
   }
 });
@@ -157,6 +184,7 @@ app.get("/:id", async (c) => {
     const odp = await prisma.odp.findUnique({
       where: { id },
       include: {
+        area: true,
         customers: true,
         _count: {
           select: {
@@ -247,7 +275,7 @@ app.get("/", checkUserToken(), async (c) => {
         success: false,
         message: "Gagal mengambil data ODP.",
       },
-      500
+      500,
     );
   }
 });

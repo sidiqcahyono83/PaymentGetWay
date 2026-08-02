@@ -16,7 +16,7 @@ app.get("/all", checkUserToken(), async (c) => {
         serial: true,
         _count: {
           select: {
-            customer: true,
+            customers: true,
           },
         },
       },
@@ -44,7 +44,7 @@ app.get("/:id", checkUserToken(), async (c) => {
 
         _count: {
           select: {
-            customer: true,
+            customers: true,
           },
         },
       },
@@ -139,7 +139,7 @@ app.get("/", checkUserToken(), async (c) => {
 
         _count: {
           select: {
-            customer: true,
+            customers: true,
           },
         },
       },
