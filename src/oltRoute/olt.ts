@@ -58,7 +58,7 @@ app.get("/:id", checkUserToken(), async (c) => {
 
 app.post("/", checkUserToken(), async (c) => {
   const body = await c.req.json();
-  const { name, username, password, location, serial } = body;
+  const { name, username, password, location, serial, customerIds = [] } = body;
   try {
     const olt = await prisma.olt.create({
       data: {
@@ -67,6 +67,9 @@ app.post("/", checkUserToken(), async (c) => {
         password,
         location,
         serial,
+        customers: {
+          connect: customerIds.map((id: string) => ({ id })),
+        },
       },
     });
 
