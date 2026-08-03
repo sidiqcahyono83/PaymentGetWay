@@ -1,6 +1,8 @@
 import { Hono } from "hono";
 import { prisma } from "../../lib/prisma";
 import { checkUserToken } from "../midleware/cekUserToken";
+import z from "zod";
+import { zValidator } from "@hono/zod-validator";
 
 const app = new Hono();
 
@@ -33,7 +35,7 @@ app.get("/:id", checkUserToken(), async (c) => {
     const olts = await prisma.olt.findUnique({
       where: { id },
       include: {
-        customer: {
+        customers: {
           include: {
             paket: true,
             area: true,
@@ -55,30 +57,83 @@ app.get("/:id", checkUserToken(), async (c) => {
     return c.json({ message: "Failed to fetch olts." }, 500);
   }
 });
+app.post(
+  "/",
+  checkUserToken(),
+  zValidator(
+    "json",
+    z.object({
+      name: z.string().min(1),
+      username: z.string().min(1),
+      password: z.string().min(1),
+      location: z.string().nullable().optional(),
+      serial: z.string().min(1),
+      customerIds: z.array(z.string()).default([]),
+    }),
+  ),
+  async (c) => {
+    const body = c.req.valid("json");
 
-app.post("/", checkUserToken(), async (c) => {
-  const body = await c.req.json();
-  const { name, username, password, location, serial, customerIds = [] } = body;
-  try {
-    const olt = await prisma.olt.create({
-      data: {
-        name,
-        username,
-        password,
-        location,
-        serial,
-        customers: {
-          connect: customerIds.map((id: string) => ({ id })),
+    try {
+      // Cek nama OLT
+      const exists = await prisma.olt.findFirst({
+        where: {
+          name: body.name,
         },
-      },
-    });
+      });
 
-    return c.json({ olt }, 201);
-  } catch (error) {
-    console.error(error);
-    return c.json({ message: "Failed to create olt." }, 500);
-  }
-});
+      if (exists) {
+        return c.json(
+          {
+            message: "Nama OLT sudah digunakan.",
+          },
+          400,
+        );
+      }
+
+      const olt = await prisma.olt.create({
+        data: {
+          name: body.name,
+          username: body.username,
+          password: body.password,
+          location: body.location,
+          serial: body.serial,
+          customers: {
+            connect: body.customerIds.map((id) => ({
+              id,
+            })),
+          },
+        },
+        include: {
+          customers: {
+            select: {
+              id: true,
+              fullname: true,
+              username: true,
+            },
+          },
+        },
+      });
+
+      return c.json(
+        {
+          message: "OLT berhasil ditambahkan.",
+          data: olt,
+        },
+        201,
+      );
+    } catch (error) {
+      console.error(error);
+
+      return c.json(
+        {
+          message: "Gagal menambahkan OLT.",
+        },
+        500,
+      );
+    }
+  },
+);
 
 app.patch("/:id", checkUserToken(), async (c) => {
   const id = c.req.param("id");
@@ -131,14 +186,7 @@ app.get("/", checkUserToken(), async (c) => {
       where,
 
       include: {
-        customer: {
-          include: {
-            paket: true,
-            area: true,
-            odp: true,
-            modem: true,
-          },
-        },
+        customers: true,
 
         _count: {
           select: {
