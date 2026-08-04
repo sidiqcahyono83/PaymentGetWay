@@ -72,6 +72,89 @@ interface disabledResponse {
   jumlah_disabled_ppp: number;
   disabled_ppp: disabledPPP[];
 }
+app.get("/", async (c) => {
+  const phpurlapi = process.env.PHP_API_URL;
+
+  try {
+    const activeResponse = await fetch(`${phpurlapi}/pppoe/active`);
+    const secretResponse = await fetch(`${phpurlapi}/pppoe/secret`);
+    const inactiveResponse = await fetch(`${phpurlapi}/pppoe/nonactive`);
+    const nonActiveNonDisabledResponse = await fetch(
+      `${phpurlapi}/pppoe/nonactiveNonDisable`,
+    );
+    const disableResponse = await fetch(`${phpurlapi}/pppoe/nonactiveDisable`);
+
+    if (!activeResponse.ok) {
+      throw new Error(`Active HTTP ${activeResponse.status}`);
+    }
+
+    if (!secretResponse.ok) {
+      throw new Error(`Secret HTTP ${secretResponse.status}`);
+    }
+
+    if (!inactiveResponse.ok) {
+      throw new Error(`Inactive HTTP ${inactiveResponse.status}`);
+    }
+
+    if (!nonActiveNonDisabledResponse.ok) {
+      throw new Error(
+        `NonActiveNonDisabled HTTP ${nonActiveNonDisabledResponse.status}`,
+      );
+    }
+
+    if (!disableResponse.ok) {
+      throw new Error(`Disabled HTTP ${disableResponse.status}`);
+    }
+
+    const active = (await activeResponse.json()) as ActiveResponse;
+    const secret = (await secretResponse.json()) as SecretResponse;
+    const inactive = (await inactiveResponse.json()) as InactiveResponse;
+    const nonActiveNonDisabled =
+      (await nonActiveNonDisabledResponse.json()) as InactiveNonDisabledResponse;
+    const disabled = (await disableResponse.json()) as disabledResponse;
+
+    if (active.active_ppp.length > 0) {
+      console.log("Sample :", active.active_ppp[0]);
+    }
+    if (secret.active_ppp.length > 0) {
+      console.log("Sample :", secret.active_ppp[0]);
+    }
+    if (inactive.inactive_ppp.length > 0) {
+      console.log("Sample :", inactive.inactive_ppp[0]);
+    }
+    if (nonActiveNonDisabled.inactive_ppp.length > 0) {
+      console.log("Sample :", nonActiveNonDisabled.inactive_ppp[0]);
+    }
+    if (disabled.disabled_ppp.length > 0) {
+      console.log("Sample :", disabled.disabled_ppp[0]);
+    }
+
+    return c.json({
+      success: true,
+      summary: {
+        jumlah_active: active.jumlah_active_ppp,
+        jumlah_secret: secret.jumlah_active_ppp,
+        jumlah_inactive: inactive.jumlah_inactive_ppp,
+        jumlah_nonactive_nondisabled: nonActiveNonDisabled.jumlah_inactive_ppp,
+        jumlah_disabled: disabled.jumlah_disabled_ppp,
+      },
+      active: active.active_ppp,
+      secret: secret.active_ppp,
+      inactive: inactive.inactive_ppp,
+      nonActiveNonDisabled: nonActiveNonDisabled.inactive_ppp,
+      disabled: disabled.disabled_ppp,
+    });
+  } catch (err) {
+    console.error(err);
+    return c.json(
+      {
+        success: false,
+        message: err instanceof Error ? err.message : "Internal Server Error",
+      },
+      500,
+    );
+  }
+});
 
 app.get("/dashboard", async (c) => {
   const phpurlapi = process.env.PHP_API_URL;
@@ -198,90 +281,6 @@ app.get("/dashboard", async (c) => {
   } catch (err) {
     console.error(err);
 
-    return c.json(
-      {
-        success: false,
-        message: err instanceof Error ? err.message : "Internal Server Error",
-      },
-      500,
-    );
-  }
-});
-
-app.get("/", async (c) => {
-  const phpurlapi = process.env.PHP_API_URL;
-
-  try {
-    const activeResponse = await fetch(`${phpurlapi}/pppoe/active`);
-    const secretResponse = await fetch(`${phpurlapi}/pppoe/secret`);
-    const inactiveResponse = await fetch(`${phpurlapi}/pppoe/nonactive`);
-    const nonActiveNonDisabledResponse = await fetch(
-      `${phpurlapi}/pppoe/nonactiveNonDisable`,
-    );
-    const disableResponse = await fetch(`${phpurlapi}/pppoe/nonactiveDisable`);
-
-    if (!activeResponse.ok) {
-      throw new Error(`Active HTTP ${activeResponse.status}`);
-    }
-
-    if (!secretResponse.ok) {
-      throw new Error(`Secret HTTP ${secretResponse.status}`);
-    }
-
-    if (!inactiveResponse.ok) {
-      throw new Error(`Inactive HTTP ${inactiveResponse.status}`);
-    }
-
-    if (!nonActiveNonDisabledResponse.ok) {
-      throw new Error(
-        `NonActiveNonDisabled HTTP ${nonActiveNonDisabledResponse.status}`,
-      );
-    }
-
-    if (!disableResponse.ok) {
-      throw new Error(`Disabled HTTP ${disableResponse.status}`);
-    }
-
-    const active = (await activeResponse.json()) as ActiveResponse;
-    const secret = (await secretResponse.json()) as SecretResponse;
-    const inactive = (await inactiveResponse.json()) as InactiveResponse;
-    const nonActiveNonDisabled =
-      (await nonActiveNonDisabledResponse.json()) as InactiveNonDisabledResponse;
-    const disabled = (await disableResponse.json()) as disabledResponse;
-
-    if (active.active_ppp.length > 0) {
-      console.log("Sample :", active.active_ppp[0]);
-    }
-    if (secret.active_ppp.length > 0) {
-      console.log("Sample :", secret.active_ppp[0]);
-    }
-    if (inactive.inactive_ppp.length > 0) {
-      console.log("Sample :", inactive.inactive_ppp[0]);
-    }
-    if (nonActiveNonDisabled.inactive_ppp.length > 0) {
-      console.log("Sample :", nonActiveNonDisabled.inactive_ppp[0]);
-    }
-    if (disabled.disabled_ppp.length > 0) {
-      console.log("Sample :", disabled.disabled_ppp[0]);
-    }
-
-    return c.json({
-      success: true,
-      summary: {
-        jumlah_active: active.jumlah_active_ppp,
-        jumlah_secret: secret.jumlah_active_ppp,
-        jumlah_inactive: inactive.jumlah_inactive_ppp,
-        jumlah_nonactive_nondisabled: nonActiveNonDisabled.jumlah_inactive_ppp,
-        jumlah_disabled: disabled.jumlah_disabled_ppp,
-      },
-      active: active.active_ppp,
-      secret: secret.active_ppp,
-      inactive: inactive.inactive_ppp,
-      nonActiveNonDisabled: nonActiveNonDisabled.inactive_ppp,
-      disabled: disabled.disabled_ppp,
-    });
-  } catch (err) {
-    console.error(err);
     return c.json(
       {
         success: false,

@@ -414,7 +414,7 @@ interface PppNotSync {
 //     const pppResponse = await fetch(`${phpurl}/pppSecret.php`);
 //     const pppJson = await pppResponse.json();
 
-//     const pppSecrets = pppJson|| [];
+//     const pppSecrets = pppJson || [];
 
 //     // ======================
 //     // 2. Ambil Customer Username
