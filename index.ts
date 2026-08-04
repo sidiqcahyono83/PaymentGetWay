@@ -13,6 +13,7 @@ import customerRoute from "./src/customerRoute/customer";
 import loginCustomeRoute from "./src/auth/loginCustomer";
 import pembayaranRoute from "./src/pembayaranRoute/pembayaran";
 import pppoeRoute from "./src/pppRoute/pppoe";
+import pppoeDashboardRoute from "./src/pppRoute/dashboard";
 
 //IV dan Payment//
 import invoiceRoute from "./src/invoice/invoiceRoute";
@@ -59,7 +60,7 @@ app.use(
   cors({
     origin: (origin) => {
       const allowedOrigins = [
-        "http://103.63.26.87",
+        "http://103.63.26.87:2025",
         "http://192.168.4.5",
         "http://192.168.4.9",
         "http://teranet.web.id",
@@ -99,6 +100,7 @@ app.route("/olts", oltRoute);
 app.route("/customers", customerRoute);
 app.route("/pembayaran", pembayaranRoute);
 app.route("/pppoe", pppoeRoute);
+app.route("/pppoedashboard", pppoeDashboardRoute);
 
 //--INV--//
 app.route("/invoice", invoiceRoute);
