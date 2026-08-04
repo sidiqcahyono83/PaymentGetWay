@@ -86,6 +86,131 @@ app.get("/dashboard", async (c) => {
     );
   }
 
+  const page = Number(c.req.query("page") ?? "1");
+  const limit = Number(c.req.query("limit") ?? "10");
+  const search = (c.req.query("search") ?? "").toLowerCase();
+  const type = c.req.query("type") ?? "secret";
+
+  function paginate<T>(data: T[], page: number, limit: number) {
+    const total = data.length;
+    const totalPages = Math.ceil(total / limit);
+    const start = (page - 1) * limit;
+    const end = start + limit;
+
+    return {
+      data: data.slice(start, end),
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages,
+      },
+    };
+  }
+
+  try {
+    const [
+      activeResponse,
+      secretResponse,
+      inactiveResponse,
+      nonActiveNonDisabledResponse,
+      disableResponse,
+    ] = await Promise.all([
+      fetch(`${phpurlapi}/pppoe/active`),
+      fetch(`${phpurlapi}/pppoe/secret`),
+      fetch(`${phpurlapi}/pppoe/nonactive`),
+      fetch(`${phpurlapi}/pppoe/nonactiveNonDisable`),
+      fetch(`${phpurlapi}/pppoe/nonactiveDisable`),
+    ]);
+
+    if (!activeResponse.ok)
+      throw new Error(`Active HTTP ${activeResponse.status}`);
+
+    if (!secretResponse.ok)
+      throw new Error(`Secret HTTP ${secretResponse.status}`);
+
+    if (!inactiveResponse.ok)
+      throw new Error(`Inactive HTTP ${inactiveResponse.status}`);
+
+    if (!nonActiveNonDisabledResponse.ok)
+      throw new Error(
+        `NonActiveNonDisabled HTTP ${nonActiveNonDisabledResponse.status}`,
+      );
+
+    if (!disableResponse.ok)
+      throw new Error(`Disabled HTTP ${disableResponse.status}`);
+
+    const active = (await activeResponse.json()) as ActiveResponse;
+    const secret = (await secretResponse.json()) as SecretResponse;
+    const inactive = (await inactiveResponse.json()) as InactiveResponse;
+    const nonActiveNonDisabled =
+      (await nonActiveNonDisabledResponse.json()) as InactiveNonDisabledResponse;
+    const disabled = (await disableResponse.json()) as disabledResponse;
+
+    let source: any[] = [];
+
+    switch (type) {
+      case "active":
+        source = active.active_ppp;
+        break;
+
+      case "inactive":
+        source = inactive.inactive_ppp;
+        break;
+
+      case "disabled":
+        source = disabled.disabled_ppp;
+        break;
+
+      case "nonactive":
+        source = nonActiveNonDisabled.inactive_ppp;
+        break;
+
+      default:
+        source = secret.active_ppp;
+        break;
+    }
+
+    // Search
+    if (search) {
+      source = source.filter((item) =>
+        item.name?.toLowerCase().includes(search),
+      );
+    }
+
+    const result = paginate(source, page, limit);
+
+    return c.json({
+      success: true,
+
+      summary: {
+        jumlah_active: active.jumlah_active_ppp,
+        jumlah_secret: secret.jumlah_active_ppp,
+        jumlah_inactive: inactive.jumlah_inactive_ppp,
+        jumlah_nonactive_nondisabled: nonActiveNonDisabled.jumlah_inactive_ppp,
+        jumlah_disabled: disabled.jumlah_disabled_ppp,
+      },
+
+      type,
+
+      ...result,
+    });
+  } catch (err) {
+    console.error(err);
+
+    return c.json(
+      {
+        success: false,
+        message: err instanceof Error ? err.message : "Internal Server Error",
+      },
+      500,
+    );
+  }
+});
+
+app.get("/", async (c) => {
+  const phpurlapi = process.env.PHP_API_URL;
+
   try {
     const activeResponse = await fetch(`${phpurlapi}/pppoe/active`);
     const secretResponse = await fetch(`${phpurlapi}/pppoe/secret`);
@@ -94,9 +219,6 @@ app.get("/dashboard", async (c) => {
       `${phpurlapi}/pppoe/nonactiveNonDisable`,
     );
     const disableResponse = await fetch(`${phpurlapi}/pppoe/nonactiveDisable`);
-
-    // console.log("Status :", response.status);
-    // console.log("OK :", response.ok);
 
     if (!activeResponse.ok) {
       throw new Error(`Active HTTP ${activeResponse.status}`);
@@ -126,32 +248,19 @@ app.get("/dashboard", async (c) => {
     const nonActiveNonDisabled =
       (await nonActiveNonDisabledResponse.json()) as InactiveNonDisabledResponse;
     const disabled = (await disableResponse.json()) as disabledResponse;
-    // console.log(active);
-    // console.log(secret);
-    // console.log(inactive);
-
-    // console.log("========== ACTIVE ==========");
-    // console.log("Status :", data.status);
-    // console.log("Message :", data.message);
-    // console.log("Jumlah :", data.jumlah_active_ppp);
-    // console.log("Data :", data.active_ppp.length);
 
     if (active.active_ppp.length > 0) {
       console.log("Sample :", active.active_ppp[0]);
     }
-
     if (secret.active_ppp.length > 0) {
       console.log("Sample :", secret.active_ppp[0]);
     }
-
     if (inactive.inactive_ppp.length > 0) {
       console.log("Sample :", inactive.inactive_ppp[0]);
     }
-
     if (nonActiveNonDisabled.inactive_ppp.length > 0) {
       console.log("Sample :", nonActiveNonDisabled.inactive_ppp[0]);
     }
-
     if (disabled.disabled_ppp.length > 0) {
       console.log("Sample :", disabled.disabled_ppp[0]);
     }
@@ -173,7 +282,6 @@ app.get("/dashboard", async (c) => {
     });
   } catch (err) {
     console.error(err);
-
     return c.json(
       {
         success: false,
