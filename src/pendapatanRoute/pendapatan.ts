@@ -15,7 +15,140 @@ type Variables = {
     level: string;
   };
 };
+// GET /pendapatan?page=1&limit=10&search=john&bulan=7&tahun=2026
+app.get("/", checkUserToken(), async (c) => {
+  try {
+    const page = Number(c.req.query("page") ?? 1);
+    const limit = Number(c.req.query("limit") ?? 10);
+    const search = c.req.query("search") ?? "";
 
+    const bulan = c.req.query("bulan");
+    const tahun = c.req.query("tahun");
+    const metode = c.req.query("metode");
+
+    const tanggalAwal = c.req.query("tanggalAwal");
+    const tanggalAkhir = c.req.query("tanggalAkhir");
+
+    const skip = (page - 1) * limit;
+
+    const where: Prisma.PendapatanWhereInput = {};
+
+    /**
+     * Filter Search (Support pencarian deskripsi Pendapatan Manual & Detail Customer dari Payment)
+     */
+    if (search) {
+      where.OR = [
+        // Cari di deskripsi pendapatan langsung (misal: "Pemasangan Baru Bpk Ahmad")
+        {
+          deskripsi: {
+            contains: search,
+          },
+        },
+        // Cari di data Customer lewat relasi Payment
+        {
+          payment: {
+            customer: {
+              OR: [
+                { fullname: { contains: search } },
+                { username: { contains: search } },
+                { phoneNumber: { contains: search } },
+              ],
+            },
+          },
+        },
+      ];
+    }
+
+    /**
+     * Filter Metode Pembayaran (diambil dari relasi Payment)
+     */
+    if (metode) {
+      where.payment = {
+        method: metode as any,
+      };
+    }
+
+    /**
+     * Filter Bulan + Tahun
+     */
+    if (bulan && tahun) {
+      const start = new Date(Number(tahun), Number(bulan) - 1, 1);
+      const end = new Date(Number(tahun), Number(bulan), 1);
+
+      where.createdAt = {
+        gte: start,
+        lt: end,
+      };
+    }
+
+    /**
+     * Filter Rentang Tanggal
+     */
+    if (tanggalAwal || tanggalAkhir) {
+      where.createdAt = {
+        ...(tanggalAwal && { gte: new Date(tanggalAwal) }),
+        ...(tanggalAkhir && { lte: new Date(tanggalAkhir) }),
+      };
+    }
+
+    // Query Data & Total dengan Transaction
+    const [total, pendapatan] = await prisma.$transaction([
+      prisma.pendapatan.count({ where }),
+
+      prisma.pendapatan.findMany({
+        where,
+        include: {
+          user: {
+            select: {
+              id: true,
+              fullname: true,
+              username: true,
+            },
+          },
+          payment: {
+            include: {
+              customer: {
+                select: {
+                  id: true,
+                  fullname: true,
+                  username: true,
+                  phonenumber: true,
+                },
+              },
+            },
+          },
+        },
+        orderBy: {
+          createdAt: "desc",
+        },
+        skip,
+        take: limit,
+      }),
+    ]);
+
+    return c.json({
+      success: true,
+      message: "Data pendapatan berhasil diambil.",
+      data: pendapatan,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+      },
+    });
+  } catch (error) {
+    console.error(error);
+
+    return c.json(
+      {
+        success: false,
+        message: "Gagal mengambil data pendapatan.",
+      },
+      500,
+    );
+  }
+});
 // Helper fungsi untuk mengambil saldo terakhir
 export async function getLastSaldo(tx: any, userId: string): Promise<number> {
   const lastKas = await tx.bukuKas.findFirst({
@@ -244,141 +377,6 @@ app.post("/pendapatan/manual", checkUserToken(), async (c) => {
     );
   } catch (err: any) {
     return c.json({ success: false, message: err.message }, 500);
-  }
-});
-
-// GET /pendapatan?page=1&limit=10&search=john&bulan=7&tahun=2026
-app.get("/", checkUserToken(), async (c) => {
-  try {
-    const page = Number(c.req.query("page") ?? 1);
-    const limit = Number(c.req.query("limit") ?? 10);
-    const search = c.req.query("search") ?? "";
-
-    const bulan = c.req.query("bulan");
-    const tahun = c.req.query("tahun");
-    const metode = c.req.query("metode");
-
-    const tanggalAwal = c.req.query("tanggalAwal");
-    const tanggalAkhir = c.req.query("tanggalAkhir");
-
-    const skip = (page - 1) * limit;
-
-    const where: Prisma.PendapatanWhereInput = {};
-
-    /**
-     * Filter Search (Support pencarian deskripsi Pendapatan Manual & Detail Customer dari Payment)
-     */
-    if (search) {
-      where.OR = [
-        // Cari di deskripsi pendapatan langsung (misal: "Pemasangan Baru Bpk Ahmad")
-        {
-          deskripsi: {
-            contains: search,
-          },
-        },
-        // Cari di data Customer lewat relasi Payment
-        {
-          payment: {
-            customer: {
-              OR: [
-                { fullname: { contains: search } },
-                { username: { contains: search } },
-                { phoneNumber: { contains: search } },
-              ],
-            },
-          },
-        },
-      ];
-    }
-
-    /**
-     * Filter Metode Pembayaran (diambil dari relasi Payment)
-     */
-    if (metode) {
-      where.payment = {
-        method: metode as any,
-      };
-    }
-
-    /**
-     * Filter Bulan + Tahun
-     */
-    if (bulan && tahun) {
-      const start = new Date(Number(tahun), Number(bulan) - 1, 1);
-      const end = new Date(Number(tahun), Number(bulan), 1);
-
-      where.createdAt = {
-        gte: start,
-        lt: end,
-      };
-    }
-
-    /**
-     * Filter Rentang Tanggal
-     */
-    if (tanggalAwal || tanggalAkhir) {
-      where.createdAt = {
-        ...(tanggalAwal && { gte: new Date(tanggalAwal) }),
-        ...(tanggalAkhir && { lte: new Date(tanggalAkhir) }),
-      };
-    }
-
-    // Query Data & Total dengan Transaction
-    const [total, pendapatan] = await prisma.$transaction([
-      prisma.pendapatan.count({ where }),
-
-      prisma.pendapatan.findMany({
-        where,
-        include: {
-          user: {
-            select: {
-              id: true,
-              fullname: true,
-              username: true,
-            },
-          },
-          payment: {
-            include: {
-              customer: {
-                select: {
-                  id: true,
-                  fullname: true,
-                  username: true,
-                  phonenumber: true,
-                },
-              },
-            },
-          },
-        },
-        orderBy: {
-          createdAt: "desc",
-        },
-        skip,
-        take: limit,
-      }),
-    ]);
-
-    return c.json({
-      success: true,
-      message: "Data pendapatan berhasil diambil.",
-      data: pendapatan,
-      pagination: {
-        page,
-        limit,
-        total,
-        totalPages: Math.ceil(total / limit),
-      },
-    });
-  } catch (error) {
-    console.error(error);
-
-    return c.json(
-      {
-        success: false,
-        message: "Gagal mengambil data pendapatan.",
-      },
-      500,
-    );
   }
 });
 
