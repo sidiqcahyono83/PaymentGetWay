@@ -10,7 +10,6 @@ const app = new Hono();
 import { createToken } from "../../lib/jwt";
 import { hashPassword, verifyPassword } from "../../lib/password";
 import { checkUserToken } from "../midleware/cekUserToken";
-import bcrypt from "bcryptjs";
 
 //auth/login
 app.post(
@@ -20,7 +19,7 @@ app.post(
     z.object({
       username: z.string(),
       password: z.string(),
-    })
+    }),
   ),
   async (c) => {
     const body = c.req.valid("json");
@@ -44,7 +43,7 @@ app.post(
 
     const validPassword = await verifyPassword(
       foundUser.password.hash,
-      body.password
+      body.password,
     );
 
     if (!validPassword) {
@@ -73,10 +72,10 @@ app.post(
           message: "Token failed to create",
           error: String(err),
         },
-        500
+        500,
       );
     }
-  }
+  },
 );
 
 app.get("/", async (c) => {
@@ -163,7 +162,7 @@ app.post(
             areas: newUser.areas,
           },
         },
-        201
+        201,
       );
     } catch (error: unknown) {
       console.error(error);
@@ -173,10 +172,10 @@ app.post(
           message: "Cannot register user.",
           error: error instanceof Error ? error.message : "Unknown error",
         },
-        400
+        400,
       );
     }
-  }
+  },
 );
 
 app.patch("/:id", checkUserToken(), async (c) => {
@@ -197,7 +196,7 @@ app.patch("/:id", checkUserToken(), async (c) => {
         message:
           "Sediakan minimal salah satu data yang valid untuk diperbarui (password, areaIds, phoneNumber, address, level).",
       },
-      400
+      400,
     );
   }
 
@@ -209,7 +208,7 @@ app.patch("/:id", checkUserToken(), async (c) => {
     if (!validLevels.includes(upperLevel)) {
       return c.json(
         { message: "Level tidak valid. Pilih antara ADMIN atau STAFF." },
-        400
+        400,
       );
     }
   }
@@ -218,7 +217,7 @@ app.patch("/:id", checkUserToken(), async (c) => {
     const updateData: any = {};
 
     if (password) {
-      const hashedPassword = await bcrypt.hash(password, 10);
+      const hashedPassword = await hashPassword(password);
       updateData.password = {
         upsert: {
           create: { hash: hashedPassword },
@@ -285,7 +284,7 @@ app.post("/", checkUserToken(), async (c) => {
   if (!username || !fullname || !password) {
     return c.json(
       { message: "Username, fullname, dan password wajib diisi." },
-      400
+      400,
     );
   }
 
@@ -300,7 +299,7 @@ app.post("/", checkUserToken(), async (c) => {
     }
 
     // 3. Hash password
-    const hashedPassword = await bcrypt.hash(password, 10);
+    const hashedPassword = await hashPassword(password);
 
     // 4. Siapkan relasi area jika areaIds dikirim dalam bentuk array
     const areasConnect =
@@ -345,7 +344,7 @@ app.post("/", checkUserToken(), async (c) => {
         message: "User berhasil dibuat.",
         data: newUser,
       },
-      201
+      201,
     );
   } catch (error) {
     console.error("Error creating user:", error);

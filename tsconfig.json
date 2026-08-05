@@ -23,6 +23,6 @@
     "noImplicitOverride": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["src", "lib", "index.ts"],
+  "include": ["src", "lib", "index.ts", "reset-password.ts"],
   "exclude": ["node_modules", "dist"]
 }

@@ -21,86 +21,60 @@ export const app = new Hono<{
 //auth/gilno;
 app.post(
   "/login",
-  zValidator(
-    "json",
-    z.object({
-      username: z.string(),
-      password: z.string(),
-    }),
-    (result, c) => {
-      // Custom handler agar pesan ZodError dikirim rapi ke Frontend
-      if (!result.success) {
+  zValidator("json", z.object({ username: z.string(), password: z.string() })),
+  async (c) => {
+    try {
+      const body = c.req.valid("json");
+
+      const foundUser = await prisma.user.findUnique({
+        where: { username: body.username },
+        include: { password: { select: { hash: true } } },
+      });
+
+      if (!foundUser) {
+        return c.json({ message: "Cannot login because user not found" }, 404);
+      }
+
+      if (!foundUser?.password?.hash) {
         return c.json(
-          {
-            success: false,
-            message: "Format input tidak valid",
-            error: result.error,
-          },
+          { message: "Cannot login because user doesn't have a password" },
           400,
         );
       }
-    },
-  ),
-  async (c) => {
-    const body = c.req.valid("json");
 
-    const foundUser = await prisma.user.findUnique({
-      where: { username: body.username },
-      include: { password: { select: { hash: true } } },
-    });
+      const validPassword = await verifyPassword(
+        foundUser.password.hash,
+        body.password,
+      );
 
-    if (!foundUser) {
-      return c.json({ message: "Cannot login because user not found" }, 404);
-    }
+      if (!validPassword) {
+        return c.json({ message: "Password incorrect" }, 400);
+      }
 
-    if (!foundUser?.password?.hash) {
+      const token = await createToken(foundUser.id);
+
+      return c.json({
+        message: "Login successful",
+        token,
+        user: {
+          id: foundUser.id,
+          username: foundUser.username,
+          fullname: foundUser.fullname, // ← tambahkan, frontend kamu butuh ini
+          level: foundUser.level,
+        },
+      });
+    } catch (err) {
+      console.error("[auth/login] error:", err);
       return c.json(
-        { message: "Cannot login because user doesn't have a password" },
-        400,
+        {
+          message: "Terjadi kesalahan pada server.",
+          // SEMENTARA: tampilkan detail biar gampang debug —
+          // hapus baris ini setelah ketemu penyebabnya.
+          error: err instanceof Error ? err.message : String(err),
+        },
+        500,
       );
     }
-
-    const validPassword = await verifyPassword(
-      foundUser.password.hash,
-      body.password,
-    );
-
-    if (!validPassword) {
-      return c.json({ message: "Password incorrect" }, 400);
-    }
-
-    const token = await createToken(foundUser.id);
-
-    if (!token) {
-      return c.json({ message: "Token failed to create" }, 500);
-    }
-
-    // Set Cookie dengan konfigurasi aman
-    setCookie(c, "token", token, cookieOptions());
-
-    // setCookie(
-    //   c,
-    //   "token",
-    //   token,
-    //   cookieOptions({
-    //     httpOnly: true,
-    //     secure: false,
-    //     sameSite: "strict",
-    //     path: "/",
-    //     maxAge: 60 * 60 * 24,
-    //   }),
-    // );
-
-    return c.json({
-      success: true,
-      message: "Login successful",
-      user: {
-        id: foundUser.id,
-        username: foundUser.username,
-        fullname: foundUser.fullname,
-        level: foundUser.level,
-      },
-    });
   },
 );
 
