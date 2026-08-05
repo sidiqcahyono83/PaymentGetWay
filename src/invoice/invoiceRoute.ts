@@ -6,7 +6,111 @@ import { checkCustomerToken } from "../midleware/checkCustomerToken";
 import { InvoiceStatus } from "../../generated/prisma/client";
 
 export const app = new Hono();
+app.get("/", checkUserToken(), async (c) => {
+  try {
+    const page = Number(c.req.query("page") ?? 1);
+    const limit = Number(c.req.query("limit") ?? 10);
 
+    const search = c.req.query("search") ?? "";
+    const status = c.req.query("status");
+    const bulan = c.req.query("bulan");
+    const tahun = c.req.query("tahun");
+
+    const skip = (page - 1) * limit;
+
+    const where: any = {};
+
+    if (status) {
+      where.status = status;
+    }
+
+    if (bulan) {
+      where.bulan = Number(bulan);
+    }
+
+    if (tahun) {
+      where.tahun = Number(tahun);
+    }
+
+    if (search) {
+      where.customer = {
+        OR: [
+          {
+            fullname: {
+              contains: search,
+            },
+          },
+          {
+            username: {
+              contains: search,
+            },
+          },
+        ],
+      };
+    }
+
+    const [data, total] = await prisma.$transaction([
+      prisma.invoice.findMany({
+        where,
+        skip,
+        take: limit,
+
+        include: {
+          customer: {
+            select: {
+              id: true,
+              fullname: true,
+              username: true,
+              phoneNumber: true,
+              status: true,
+            },
+          },
+        },
+
+        orderBy: [
+          {
+            invoiceNumber: "asc",
+          },
+          {
+            tahun: "desc",
+          },
+          {
+            bulan: "desc",
+          },
+          {
+            createdAt: "desc",
+          },
+        ],
+      }),
+
+      prisma.invoice.count({
+        where,
+      }),
+    ]);
+
+    return c.json({
+      success: true,
+      jumlah: data.length,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+      },
+      data,
+    });
+  } catch (err) {
+    console.error(err);
+
+    return c.json(
+      {
+        success: false,
+        message: "Gagal mengambil invoice.",
+      },
+      500,
+    );
+  }
+});
 app.get("/dashboard", checkUserToken(), async (c) => {
   try {
     const now = new Date();
@@ -409,214 +513,6 @@ app.post("/generate", checkUserToken(), async (c) => {
       {
         success: false,
         message: "Terjadi kesalahan pada server.",
-      },
-      500,
-    );
-  }
-});
-
-// app.get("/", checkLogin(), checkRole("SUPER_ADMIN", "ADMIN"), async (c) => {
-//   try {
-//     const page = Number(c.req.query("page") ?? 1);
-//     const limit = Number(c.req.query("limit") ?? 10);
-
-//     const search = c.req.query("search") ?? "";
-//     const status = c.req.query("status");
-//     const bulan = c.req.query("bulan");
-//     const tahun = c.req.query("tahun");
-
-//     const skip = (page - 1) * limit;
-
-//     const where: any = {};
-
-//     if (status) {
-//       where.status = status;
-//     }
-
-//     if (bulan) {
-//       where.bulan = Number(bulan);
-//     }
-
-//     if (tahun) {
-//       where.tahun = Number(tahun);
-//     }
-
-//     if (search) {
-//       where.customer = {
-//         OR: [
-//           {
-//             fullname: {
-//               contains: search,
-//             },
-//           },
-//           {
-//             username: {
-//               contains: search,
-//             },
-//           },
-//         ],
-//       };
-//     }
-
-//     const [data, total] = await prisma.$transaction([
-//       prisma.invoice.findMany({
-//         where,
-//         skip,
-//         take: limit,
-
-//         include: {
-//           customer: {
-//             select: {
-//               id: true,
-//               fullname: true,
-//               username: true,
-//               phoneNumber: true,
-//               status: true,
-//             },
-//           },
-//         },
-
-//         orderBy: [
-//           {
-//             tahun: "desc",
-//           },
-//           {
-//             bulan: "desc",
-//           },
-//           {
-//             createdAt: "desc",
-//           },
-//         ],
-//       }),
-
-//       prisma.invoice.count({
-//         where,
-//       }),
-//     ]);
-
-//     return c.json({
-//       success: true,
-//       data,
-//       pagination: {
-//         page,
-//         limit,
-//         total,
-//         totalPages: Math.ceil(total / limit),
-//       },
-//     });
-//   } catch (err) {
-//     console.error(err);
-
-//     return c.json(
-//       {
-//         success: false,
-//         message: "Gagal mengambil invoice.",
-//       },
-//       500,
-//     );
-//   }
-// });
-
-app.get("/", checkUserToken(), async (c) => {
-  try {
-    const page = Number(c.req.query("page") ?? 1);
-    const limit = Number(c.req.query("limit") ?? 10);
-
-    const search = c.req.query("search") ?? "";
-    const status = c.req.query("status");
-    const bulan = c.req.query("bulan");
-    const tahun = c.req.query("tahun");
-
-    const skip = (page - 1) * limit;
-
-    const where: any = {};
-
-    if (status) {
-      where.status = status;
-    }
-
-    if (bulan) {
-      where.bulan = Number(bulan);
-    }
-
-    if (tahun) {
-      where.tahun = Number(tahun);
-    }
-
-    if (search) {
-      where.customer = {
-        OR: [
-          {
-            fullname: {
-              contains: search,
-            },
-          },
-          {
-            username: {
-              contains: search,
-            },
-          },
-        ],
-      };
-    }
-
-    const [data, total] = await prisma.$transaction([
-      prisma.invoice.findMany({
-        where,
-        skip,
-        take: limit,
-
-        include: {
-          customer: {
-            select: {
-              id: true,
-              fullname: true,
-              username: true,
-              phoneNumber: true,
-              status: true,
-            },
-          },
-        },
-
-        orderBy: [
-          {
-            invoiceNumber: "asc",
-          },
-          {
-            tahun: "desc",
-          },
-          {
-            bulan: "desc",
-          },
-          {
-            createdAt: "desc",
-          },
-        ],
-      }),
-
-      prisma.invoice.count({
-        where,
-      }),
-    ]);
-
-    return c.json({
-      success: true,
-      jumlah: data.length,
-      pagination: {
-        page,
-        limit,
-        total,
-        totalPages: Math.ceil(total / limit),
-      },
-      data,
-    });
-  } catch (err) {
-    console.error(err);
-
-    return c.json(
-      {
-        success: false,
-        message: "Gagal mengambil invoice.",
       },
       500,
     );
