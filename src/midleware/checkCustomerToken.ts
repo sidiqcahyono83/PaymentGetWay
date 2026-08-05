@@ -10,7 +10,7 @@ export const checkCustomerToken = () => {
     // console.log("CUSTOMER ROUTE");
     // console.log("Cookie Header:", c.req.header("cookie"));
     const token = getCookie(c, "token");
-    console.log("Token2:", token);
+    // console.log("Token2:", token);
     if (!token) {
       return c.json(
         {
@@ -21,7 +21,7 @@ export const checkCustomerToken = () => {
     }
 
     const payload = await validateTokenCustomer(token);
-    console.log("Payload:", payload);
+    // console.log("Payload:", payload);
     if (!payload?.subject) {
       return c.json(
         {
@@ -36,8 +36,8 @@ export const checkCustomerToken = () => {
     });
 
     await next();
-    console.log("Origin:", c.req.header("origin"));
-    console.log("Host:", c.req.header("host"));
-    console.log("Cookie:", c.req.header("cookie"));
+    // console.log("Origin:", c.req.header("origin"));
+    // console.log("Host:", c.req.header("host"));
+    // console.log("Cookie:", c.req.header("cookie"));
   });
 };

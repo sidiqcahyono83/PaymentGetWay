@@ -228,7 +228,7 @@ app.get("/", checkUserToken(), async (c) => {
     const year = payment.paidAt.getFullYear();
 
     const item = monthlyIncome.find(
-      (m) => m.month === monthNames[month] && m.year === year
+      (m) => m.month === monthNames[month] && m.year === year,
     );
 
     if (item) {
@@ -265,7 +265,7 @@ app.get("/", checkUserToken(), async (c) => {
     pppoeActive: pppData.jumlah_active_ppp,
     pppoeDisable: disableData.jumlah_disabled_ppp,
   };
-  console.log(summary);
+  // console.log(summary);
   return c.json({
     success: true,
     summary,

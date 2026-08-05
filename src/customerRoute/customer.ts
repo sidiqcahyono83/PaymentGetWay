@@ -42,7 +42,7 @@ app.get("/all", checkUserToken(), async (c) => {
       },
     });
 
-    console.log("Found:", customers.length);
+    // console.log("Found:", customers.length);
     return c.json(customers);
   } catch (error) {
     console.error(error);

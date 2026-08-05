@@ -208,7 +208,7 @@ app.post("/enableppp", async (c) => {
       body: JSON.stringify({ username }),
     });
 
-    console.log("Response status dari PHP API:", response.status);
+    // console.log("Response status dari PHP API:", response.status);
 
     if (!response.ok) {
       const text = await response.text();
@@ -242,10 +242,10 @@ app.post("/updateppp", async (c) => {
       return c.json({ message: "Username dan profile wajib diisi" }, 400);
     }
 
-    console.log("Mengirim request ke PHP API updatepppoe.php", {
-      username,
-      profile,
-    });
+    // console.log("Mengirim request ke PHP API updatepppoe.php", {
+    // username,
+    // profile,
+    // });
 
     const response = await fetch(`${phpurl}/updateprofilepppoe.php`, {
       method: "POST",
@@ -255,7 +255,7 @@ app.post("/updateppp", async (c) => {
       body: JSON.stringify({ username, profile }),
     });
 
-    console.log("Status response dari PHP API:", response.status);
+    // console.log("Status response dari PHP API:", response.status);
 
     const text = await response.text();
 

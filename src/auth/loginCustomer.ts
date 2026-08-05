@@ -82,7 +82,7 @@ app.post(
       path: "/",
       maxAge: 60 * 60 * 2,
     });
-    console.log("Token:", token);
+    // console.log("Token:", token);
 
     return c.json({
       success: true,

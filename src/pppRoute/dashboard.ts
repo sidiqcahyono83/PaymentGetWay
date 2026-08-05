@@ -114,19 +114,19 @@ app.get("/", async (c) => {
     const disabled = (await disableResponse.json()) as disabledResponse;
 
     if (active.active_ppp.length > 0) {
-      console.log("Sample :", active.active_ppp[0]);
+      // console.log("Sample :", active.active_ppp[0]);
     }
     if (secret.active_ppp.length > 0) {
-      console.log("Sample :", secret.active_ppp[0]);
+      // console.log("Sample :", secret.active_ppp[0]);
     }
     if (inactive.inactive_ppp.length > 0) {
-      console.log("Sample :", inactive.inactive_ppp[0]);
+      // console.log("Sample :", inactive.inactive_ppp[0]);
     }
     if (nonActiveNonDisabled.inactive_ppp.length > 0) {
-      console.log("Sample :", nonActiveNonDisabled.inactive_ppp[0]);
+      // console.log("Sample :", nonActiveNonDisabled.inactive_ppp[0]);
     }
     if (disabled.disabled_ppp.length > 0) {
-      console.log("Sample :", disabled.disabled_ppp[0]);
+      // console.log("Sample :", disabled.disabled_ppp[0]);
     }
 
     return c.json({

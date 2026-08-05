@@ -151,7 +151,7 @@ app.post(
         },
       });
 
-      console.log(newUser);
+      // console.log(newUser);
       return c.json(
         {
           message: "Register new user successful",

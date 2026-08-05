@@ -136,7 +136,7 @@ app.patch("/:id", async (c) => {
         },
       });
     }
-    console.log("ODP updated successfully:", odp);
+    // console.log("ODP updated successfully:", odp);
     /**
      * Ambil kembali data lengkap
      */

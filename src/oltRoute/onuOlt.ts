@@ -27,14 +27,14 @@ olt.get("/", oltAuth, async (c) => {
       "x-token": token,
     },
   });
-  console.log(`${baseUrl}/ontinfo_table`);
+  // console.log(`${baseUrl}/ontinfo_table`);
 
-  console.log("Status:", res.status);
-  console.log("Content-Type:", res.headers.get("content-type"));
+  // console.log("Status:", res.status);
+  // console.log("Content-Type:", res.headers.get("content-type"));
 
   const text = await res.text();
 
-  console.log("Response:", text);
+  // console.log("Response:", text);
 
   return c.text(text);
 });
@@ -58,7 +58,7 @@ olt.get("/onu/:name", oltAuth, async (c) => {
   const data = (await res.json()) as OntResponse;
 
   const result = data.data.filter(
-    (ont: any) => ont.ont_name.toLowerCase() === name.toLowerCase()
+    (ont: any) => ont.ont_name.toLowerCase() === name.toLowerCase(),
   );
 
   return c.json({
@@ -85,7 +85,7 @@ olt.get("/onu/sn/:sn", oltAuth, async (c) => {
   const data = (await res.json()) as OntResponse;
 
   const result = data.data.filter(
-    (ont: any) => ont.ont_sn.toLowerCase() === sn.toLowerCase()
+    (ont: any) => ont.ont_sn.toLowerCase() === sn.toLowerCase(),
   );
 
   return c.json({
@@ -110,7 +110,7 @@ olt.get("/port/:port", oltAuth, async (c) => {
       headers: {
         "x-token": token,
       },
-    }
+    },
   );
 
   const data = await res.json();

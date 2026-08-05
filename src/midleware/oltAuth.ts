@@ -96,7 +96,7 @@ export const oltAuth = async (c: Context, next: Next) => {
   // Login ulang setiap 30 menit
   if (!tokenCache[olt] || now - tokenCache[olt].loginAt > 30 * 60 * 1000) {
     try {
-      console.log(`Login ke OLT ${olt}`);
+      // console.log(`Login ke OLT ${olt}`);
 
       const token = await loginOlt(config.baseUrl);
 
@@ -105,7 +105,7 @@ export const oltAuth = async (c: Context, next: Next) => {
         loginAt: now,
       };
 
-      console.log(`Login ${olt} berhasil`);
+      // console.log(`Login ${olt} berhasil`);
     } catch (err) {
       console.error(err);
 
