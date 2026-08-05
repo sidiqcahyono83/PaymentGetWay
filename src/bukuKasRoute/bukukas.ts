@@ -4,6 +4,66 @@ import { checkUserToken } from "../midleware/cekUserToken";
 
 const app = new Hono();
 
+// ==========================================
+// GET BUKU KAS (Daftar & Rekapitulasi)
+// ==========================================
+app.get("/", checkUserToken(), async (c) => {
+  try {
+    const user = c.get("user");
+    const { startDate, endDate } = c.req.query(); // Opsional untuk filter tanggal
+
+    const whereClause: any = {
+      userId: user.id,
+    };
+
+    // Filter berdasarkan rentang tanggal jika dikirim dari client
+    if (startDate && endDate) {
+      whereClause.tanggal = {
+        gte: new Date(startDate),
+        lte: new Date(endDate),
+      };
+    }
+
+    const bukuKasList = await prisma.bukuKas.findMany({
+      where: whereClause,
+      include: {
+        pendapatan: {
+          select: {
+            id: true,
+            total: true,
+            deskripsi: true,
+            createdAt: true,
+          },
+        },
+        pengeluaran: {
+          select: {
+            id: true,
+            totalKeluar: true,
+            kategori: true,
+            deskripsi: true,
+            createdAt: true,
+          },
+        },
+      },
+      orderBy: {
+        tanggal: "desc",
+      },
+    });
+
+    return c.json({
+      success: true,
+      message: "Data Buku Kas berhasil diambil.",
+      data: bukuKasList,
+    });
+  } catch (err) {
+    console.error("Error fetching buku kas:", err);
+    return c.json(
+      { success: false, message: "Gagal mengambil data Buku Kas." },
+      500,
+    );
+  }
+});
+
 /**
  * GET /bukukas
  * List Buku Kas
@@ -14,7 +74,7 @@ const app = new Hono();
  * ?bulan=7
  * ?tahun=2026
  */
-app.get("/buku-kas", async (c) => {
+app.get("/bukukas", async (c) => {
   try {
     const page = Number(c.req.query("page") ?? 1);
     const limit = Number(c.req.query("limit") ?? 10);
@@ -99,7 +159,7 @@ app.get("/buku-kas", async (c) => {
         success: false,
         message: error.message,
       },
-      500
+      500,
     );
   }
 });
@@ -143,7 +203,7 @@ app.get("/:id", async (c) => {
           success: false,
           message: "Data tidak ditemukan.",
         },
-        404
+        404,
       );
     }
 
@@ -157,7 +217,7 @@ app.get("/:id", async (c) => {
         success: false,
         message: error.message,
       },
-      500
+      500,
     );
   }
 });
@@ -195,68 +255,9 @@ app.get("/summary/total", async (c) => {
         success: false,
         message: error.message,
       },
-      500
+      500,
     );
   }
 });
 
-// ==========================================
-// GET BUKU KAS (Daftar & Rekapitulasi)
-// ==========================================
-app.get("/", checkUserToken(), async (c) => {
-  try {
-    const user = c.get("user");
-    const { startDate, endDate } = c.req.query(); // Opsional untuk filter tanggal
-
-    const whereClause: any = {
-      userId: user.id,
-    };
-
-    // Filter berdasarkan rentang tanggal jika dikirim dari client
-    if (startDate && endDate) {
-      whereClause.tanggal = {
-        gte: new Date(startDate),
-        lte: new Date(endDate),
-      };
-    }
-
-    const bukuKasList = await prisma.bukuKas.findMany({
-      where: whereClause,
-      include: {
-        pendapatan: {
-          select: {
-            id: true,
-            total: true,
-            deskripsi: true,
-            createdAt: true,
-          },
-        },
-        pengeluaran: {
-          select: {
-            id: true,
-            totalKeluar: true,
-            kategori: true,
-            deskripsi: true,
-            createdAt: true,
-          },
-        },
-      },
-      orderBy: {
-        tanggal: "desc",
-      },
-    });
-
-    return c.json({
-      success: true,
-      message: "Data Buku Kas berhasil diambil.",
-      data: bukuKasList,
-    });
-  } catch (err) {
-    console.error("Error fetching buku kas:", err);
-    return c.json(
-      { success: false, message: "Gagal mengambil data Buku Kas." },
-      500
-    );
-  }
-});
 export default app;

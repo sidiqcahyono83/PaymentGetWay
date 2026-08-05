@@ -7,37 +7,27 @@ export const checkUserToken = () => {
   return createMiddleware<{
     Variables: Variables;
   }>(async (c, next) => {
-    // console.log("CUSTOMER ROUTE");
-    // console.log("Cookie Header:", c.req.header("cookie"));
+    // 1. Ambil token dari cookie
     const token = getCookie(c, "token");
-    // console.log("Token:", token);
+
     if (!token) {
-      return c.json(
-        {
-          message: "Unauthorized",
-        },
-        401,
-      );
+      return c.json({ message: "Unauthorized" }, 401);
     }
 
+    // 2. Validasi token
     const payload = await validateToken(token);
-    // console.log("Payload:", payload);
+
+    // oslo decodedToken → { subject, issuedAt, expiresAt }
     if (!payload?.subject) {
-      return c.json(
-        {
-          message: "Invalid Token",
-        },
-        401,
-      );
+      return c.json({ message: "Invalid Token" }, 401);
     }
 
+    // 3. ⭐ SET user dengan { id: subject } — INI YANG MEMPERBAIKI
+    //    error "where: { id: undefined }" di /auth/me
     c.set("user", {
       id: payload.subject,
     });
 
     await next();
-    // console.log("Origin:", c.req.header("origin"));
-    // console.log("Host:", c.req.header("host"));
-    // console.log("Cookie:", c.req.header("cookie"));
   });
 };

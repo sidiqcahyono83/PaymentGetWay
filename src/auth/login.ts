@@ -18,7 +18,7 @@ export const app = new Hono<{
   Variables: Variables;
 }>();
 
-//auth/gilno;
+// auth/gilno;
 app.post(
   "/login",
   zValidator("json", z.object({ username: z.string(), password: z.string() })),
@@ -53,13 +53,33 @@ app.post(
 
       const token = await createToken(foundUser.id);
 
+      if (!token) {
+        return c.json({ message: "Token failed to create" }, 500);
+      }
+
+      // Set Cookie dengan konfigurasi aman
+      setCookie(c, "token", token, cookieOptions());
+
+      // setCookie(
+      //   c,
+      //   "token",
+      //   token,
+      //   cookieOptions({
+      //     httpOnly: true,
+      //     secure: false,
+      //     sameSite: "strict",
+      //     path: "/",
+      //     maxAge: 60 * 60 * 24,
+      //   }),
+      // );
+
       return c.json({
         message: "Login successful",
         token,
         user: {
           id: foundUser.id,
           username: foundUser.username,
-          fullname: foundUser.fullname, // ← tambahkan, frontend kamu butuh ini
+          fullname: foundUser.fullname,
           level: foundUser.level,
         },
       });
