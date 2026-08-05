@@ -15,6 +15,7 @@ type Variables = {
     level: string;
   };
 };
+
 // GET /pendapatan?page=1&limit=10&search=john&bulan=7&tahun=2026
 app.get("/", checkUserToken(), async (c) => {
   try {
@@ -33,18 +34,9 @@ app.get("/", checkUserToken(), async (c) => {
 
     const where: Prisma.PendapatanWhereInput = {};
 
-    /**
-     * Filter Search (Support pencarian deskripsi Pendapatan Manual & Detail Customer dari Payment)
-     */
     if (search) {
       where.OR = [
-        // Cari di deskripsi pendapatan langsung (misal: "Pemasangan Baru Bpk Ahmad")
-        {
-          deskripsi: {
-            contains: search,
-          },
-        },
-        // Cari di data Customer lewat relasi Payment
+        { deskripsi: { contains: search } },
         {
           payment: {
             customer: {
@@ -59,31 +51,16 @@ app.get("/", checkUserToken(), async (c) => {
       ];
     }
 
-    /**
-     * Filter Metode Pembayaran (diambil dari relasi Payment)
-     */
     if (metode) {
-      where.payment = {
-        method: metode as any,
-      };
+      where.payment = { method: metode as any };
     }
 
-    /**
-     * Filter Bulan + Tahun
-     */
     if (bulan && tahun) {
       const start = new Date(Number(tahun), Number(bulan) - 1, 1);
       const end = new Date(Number(tahun), Number(bulan), 1);
-
-      where.createdAt = {
-        gte: start,
-        lt: end,
-      };
+      where.createdAt = { gte: start, lt: end };
     }
 
-    /**
-     * Filter Rentang Tanggal
-     */
     if (tanggalAwal || tanggalAkhir) {
       where.createdAt = {
         ...(tanggalAwal && { gte: new Date(tanggalAwal) }),
@@ -91,7 +68,6 @@ app.get("/", checkUserToken(), async (c) => {
       };
     }
 
-    // Query Data & Total dengan Transaction
     const [total, pendapatan] = await prisma.$transaction([
       prisma.pendapatan.count({ where }),
 
@@ -112,15 +88,23 @@ app.get("/", checkUserToken(), async (c) => {
                   id: true,
                   fullname: true,
                   username: true,
-                  phonenumber: true,
+                  phoneNumber: true, // ✅ FIX typo: dulu `phonenumber`
+                },
+              },
+              invoice: {
+                // ✅ BARU: biar nomor invoice ikut tampil
+                select: {
+                  id: true,
+                  invoiceNumber: true,
+                  total: true,
+                  bulan: true,
+                  tahun: true,
                 },
               },
             },
           },
         },
-        orderBy: {
-          createdAt: "desc",
-        },
+        orderBy: { createdAt: "desc" },
         skip,
         take: limit,
       }),
@@ -139,15 +123,22 @@ app.get("/", checkUserToken(), async (c) => {
     });
   } catch (error) {
     console.error(error);
-
     return c.json(
-      {
-        success: false,
-        message: "Gagal mengambil data pendapatan.",
-      },
+      { success: false, message: "Gagal mengambil data pendapatan." },
       500,
     );
   }
+});
+
+app.get("/all", checkUserToken(), async (c) => {
+  const response = await prisma.pendapatan.findMany({
+    select: {
+      payment: true,
+
+      user: true,
+    },
+  });
+  return c.json(response);
 });
 // Helper fungsi untuk mengambil saldo terakhir
 export async function getLastSaldo(tx: any, userId: string): Promise<number> {
