@@ -11,8 +11,8 @@
 import { hashPassword } from "../../lib/password";
 import { prisma } from "../../lib/prisma";
 
-const USERNAME = "evil"; // ← ganti username yang mau di-reset
-const NEW_PASSWORD = "evi1103"; // ← ganti password baru
+const USERNAME = "hujin"; // ← ganti username yang mau di-reset
+const NEW_PASSWORD = "hujin321"; // ← ganti password baru
 
 async function main() {
   // 1. Cek user & hash lama
