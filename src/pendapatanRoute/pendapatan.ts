@@ -16,12 +16,6 @@ type Variables = {
   };
 };
 
-app.get("/", checkUserToken(), async (c) => {
-  const pendapatan = await prisma.pendapatan.findMany({});
-
-  return c.json(pendapatan);
-});
-
 // Helper fungsi untuk mengambil saldo terakhir
 export async function getLastSaldo(tx: any, userId: string): Promise<number> {
   const lastKas = await tx.bukuKas.findFirst({
@@ -42,7 +36,7 @@ app.post("/", checkUserToken(), async (c) => {
           success: false,
           message: "Unauthorized",
         },
-        401
+        401,
       );
     }
 
@@ -54,7 +48,7 @@ app.post("/", checkUserToken(), async (c) => {
           success: false,
           message: "paymentId wajib diisi.",
         },
-        400
+        400,
       );
     }
 
@@ -158,7 +152,7 @@ app.post("/", checkUserToken(), async (c) => {
         message: "Pendapatan dan Buku Kas berhasil dicatat.",
         data: hasil,
       },
-      201
+      201,
     );
   } catch (err: any) {
     console.error(err);
@@ -168,7 +162,7 @@ app.post("/", checkUserToken(), async (c) => {
         success: false,
         message: err.message || "Terjadi kesalahan pada server.",
       },
-      400
+      400,
     );
   }
 });
@@ -184,7 +178,7 @@ app.post("/pendapatan/manual", checkUserToken(), async (c) => {
     if (!total || total <= 0) {
       return c.json(
         { success: false, message: "Total nominal wajib diisi." },
-        400
+        400,
       );
     }
 
@@ -246,7 +240,7 @@ app.post("/pendapatan/manual", checkUserToken(), async (c) => {
 
     return c.json(
       { success: true, message: "Pendapatan berhasil dicatat.", data: hasil },
-      201
+      201,
     );
   } catch (err: any) {
     return c.json({ success: false, message: err.message }, 500);
@@ -383,7 +377,7 @@ app.get("/", checkUserToken(), async (c) => {
         success: false,
         message: "Gagal mengambil data pendapatan.",
       },
-      500
+      500,
     );
   }
 });
@@ -416,7 +410,7 @@ app.get("/:id", checkUserToken(), async (c) => {
           success: false,
           message: "Data pendapatan tidak ditemukan.",
         },
-        404
+        404,
       );
     }
 
@@ -432,7 +426,7 @@ app.get("/:id", checkUserToken(), async (c) => {
         success: false,
         message: "Gagal mengambil detail pendapatan.",
       },
-      500
+      500,
     );
   }
 });
