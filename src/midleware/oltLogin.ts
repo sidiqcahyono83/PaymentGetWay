@@ -262,3 +262,142 @@ export function clearOltCache(olt?: string) {
     responseCache.clear();
   }
 }
+
+// ============================================================
+// oltSet — kirim perintah SET ke OLT (edit ont_name, dll)
+// Pola API ZTE (dari F12):
+//   URL    : {baseUrl}/ontinfo_table?form=set
+//   Method : POST
+//   Body   : {"method":"set","param":{"identifier":256,"flags":8,
+//             "ont_name":"Muflih-skt","ont_description":"1"}}
+//   Header : x-token
+// ============================================================
+
+/** Kandidat endpoint set nama ONT (ZTE) — dicoba satu per satu.
+ *  URL edit yang benar dari F12: {baseUrl}/gponont_mgmt?form=info (POST) */
+export const OLT_SET_ONT_PATHS = [
+  "/gponont_mgmt?form=info",
+  "/ontinfo_table?form=set",
+  "/ontinfo_table?form=set_ontname",
+  "/gponont_mgmt?form=set_ontname",
+  "/gponont_mgmt?form=set",
+];
+
+export interface SetOntParam {
+  identifier: number;
+  flags?: number;
+  ont_name?: string;
+  ont_description?: string;
+}
+
+/**
+ * oltSet — kirim perintah SET ke OLT.
+ * Mencoba beberapa kandidat path, LOG detail (URL, status, response OLT)
+ * supaya kalau gagal langsung kelihatan penyebabnya.
+ */
+export async function oltSet(
+  oltOrUrl: string | undefined,
+  path: string,
+  param: Record<string, unknown>,
+  opts: { timeoutMs?: number } = {},
+): Promise<any> {
+  const olt = resolveOlt(oltOrUrl);
+  const cfg = OLT_LIST[olt];
+
+  if (!cfg) {
+    throw new Error(`OLT "${olt}" tidak ditemukan di OLT_LIST`);
+  }
+
+  const body = JSON.stringify({ method: "set", param });
+  let lastResult: any = null;
+
+  for (const p of [path, ...OLT_SET_ONT_PATHS.filter((x) => x !== path)]) {
+    const url = `${cfg.baseUrl}${p}`;
+
+    console.log(`[oltSet] ${olt} → POST ${url}`);
+    console.log(`[oltSet] body: ${body}`);
+
+    const doFetch = (token: string) =>
+      fetchWithTimeout(
+        url,
+        {
+          method: "POST",
+          headers: {
+            "x-token": token,
+            "Content-Type": "application/json",
+          },
+          body,
+        },
+        opts.timeoutMs,
+      );
+
+    let res = await doFetch(await getOltToken(olt));
+
+    if (res.status === 401 || res.status === 403) {
+      const freshToken = await getOltToken(olt, true);
+      res = await doFetch(freshToken);
+    }
+
+    const raw = await res.text();
+    let parsed: any = raw;
+
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      // body bukan JSON
+    }
+
+    console.log(`[oltSet] ${olt} ${p} → status ${res.status}`, parsed);
+
+    lastResult = {
+      success: res.ok,
+      status: res.status,
+      raw,
+      data: parsed,
+      path: p,
+    };
+
+    // Kalau OLT balas sukses, berhenti
+    if (res.ok) {
+      break;
+    }
+  }
+
+  // Hapus cache respons terkait OLT (data berubah → jangan tampilkan basi)
+  clearOltCache(olt);
+
+  return (
+    lastResult ?? {
+      success: false,
+      status: 0,
+      raw: "",
+      data: null,
+      path: "",
+    }
+  );
+}
+
+/** Helper: ganti nama & deskripsi ONT (payload sesuai tangkapan F12) */
+export async function setOntName(
+  oltOrUrl: string | undefined,
+  identifier: number,
+  ont_name: string,
+  ont_description?: string,
+  flags = 8,
+): Promise<any> {
+  const param: SetOntParam = {
+    identifier,
+    flags,
+    ont_name,
+  };
+
+  if (ont_description !== undefined) {
+    param.ont_description = ont_description;
+  }
+
+  return oltSet(
+    oltOrUrl,
+    OLT_SET_ONT_PATHS[0]!,
+    param as unknown as Record<string, unknown>,
+  );
+}

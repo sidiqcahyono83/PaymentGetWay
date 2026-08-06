@@ -10,7 +10,12 @@
 // ============================================================
 
 import { Hono } from "hono";
-import { OLT_LIST, oltFetch, resolveOlt } from "../midleware/oltLogin";
+import {
+  OLT_LIST,
+  oltFetch,
+  resolveOlt,
+  setOntName,
+} from "../midleware/oltLogin";
 import { oltAuth } from "./oltAuth";
 
 export type VariablesOlt = {
@@ -215,6 +220,62 @@ olt.get("/port/:port", oltAuth, async (c) => {
     });
   } catch (err) {
     console.error("[olt] GET /port/:port gagal:", err);
+    return c.json(
+      { success: false, message: err instanceof Error ? err.message : "Gagal" },
+      500,
+    );
+  }
+});
+
+// ------------------------------------------------------------
+// POST /onu/:id/name — EDIT nama & deskripsi ONT ⭐
+// Body: { "ont_name": "Muflih-skt", "ont_description": "1" }
+// Payload ke OLT:
+//   {"method":"set","param":{"identifier":256,"flags":8,
+//    "ont_name":"...","ont_description":"..."}}
+// ------------------------------------------------------------
+olt.post("/onu/:id/name", oltAuth, async (c) => {
+  try {
+    const id = Number(c.req.param("id"));
+    const oltName = getOltName(c);
+
+    if (!id || Number.isNaN(id)) {
+      return c.json({ message: "identifier ONT tidak valid" }, 400);
+    }
+
+    const body = await c.req.json().catch(() => ({}));
+    const ont_name = String(body?.ont_name ?? "").trim();
+    const ont_description =
+      body?.ont_description !== undefined
+        ? String(body.ont_description).trim()
+        : undefined;
+
+    if (!ont_name) {
+      return c.json({ message: "ont_name wajib diisi" }, 400);
+    }
+
+    console.log(`[olt] Edit ONT ${oltName} id=${id} → "${ont_name}"`);
+
+    const result = await setOntName(oltName, id, ont_name, ont_description);
+
+    if (!result.success) {
+      return c.json(
+        {
+          success: false,
+          message: `Gagal mengedit ONT (${result.status})`,
+          detail: result.data,
+        },
+        502,
+      );
+    }
+
+    return c.json({
+      success: true,
+      message: "Nama ONT berhasil diubah.",
+      data: result.data,
+    });
+  } catch (err) {
+    console.error("[olt] POST /onu/:id/name gagal:", err);
     return c.json(
       { success: false, message: err instanceof Error ? err.message : "Gagal" },
       500,
