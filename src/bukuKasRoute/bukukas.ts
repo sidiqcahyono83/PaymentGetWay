@@ -74,95 +74,95 @@ app.get("/", checkUserToken(), async (c) => {
  * ?bulan=7
  * ?tahun=2026
  */
-app.get("/bukukas", async (c) => {
-  try {
-    const page = Number(c.req.query("page") ?? 1);
-    const limit = Number(c.req.query("limit") ?? 10);
+// app.get("/bukukas", async (c) => {
+//   try {
+//     const page = Number(c.req.query("page") ?? 1);
+//     const limit = Number(c.req.query("limit") ?? 10);
 
-    const bulan = c.req.query("bulan");
-    const tahun = c.req.query("tahun");
+//     const bulan = c.req.query("bulan");
+//     const tahun = c.req.query("tahun");
 
-    const where: any = {};
+//     const where: any = {};
 
-    if (bulan && tahun) {
-      where.tanggal = {
-        gte: new Date(Number(tahun), Number(bulan) - 1, 1),
-        lt: new Date(Number(tahun), Number(bulan), 1),
-      };
-    }
+//     if (bulan && tahun) {
+//       where.tanggal = {
+//         gte: new Date(Number(tahun), Number(bulan) - 1, 1),
+//         lt: new Date(Number(tahun), Number(bulan), 1),
+//       };
+//     }
 
-    const [total, data] = await prisma.$transaction([
-      prisma.bukuKas.count({
-        where,
-      }),
+//     const [total, data] = await prisma.$transaction([
+//       prisma.bukuKas.count({
+//         where,
+//       }),
 
-      prisma.bukuKas.findMany({
-        where,
-        include: {
-          user: {
-            select: {
-              id: true,
-              fullname: true,
-              username: true,
-            },
-          },
+//       prisma.bukuKas.findMany({
+//         where,
+//         include: {
+//           user: {
+//             select: {
+//               id: true,
+//               fullname: true,
+//               username: true,
+//             },
+//           },
 
-          pendapatan: {
-            include: {
-              payment: {
-                include: {
-                  customer: {
-                    select: {
-                      id: true,
-                      fullname: true,
-                      username: true,
-                    },
-                  },
-                },
-              },
-            },
-          },
+//           pendapatan: {
+//             include: {
+//               payment: {
+//                 include: {
+//                   customer: {
+//                     select: {
+//                       id: true,
+//                       fullname: true,
+//                       username: true,
+//                     },
+//                   },
+//                 },
+//               },
+//             },
+//           },
 
-          pengeluaran: {
-            include: {
-              user: {
-                select: {
-                  id: true,
-                  fullname: true,
-                  username: true,
-                },
-              },
-            },
-          },
-        },
+//           pengeluaran: {
+//             include: {
+//               user: {
+//                 select: {
+//                   id: true,
+//                   fullname: true,
+//                   username: true,
+//                 },
+//               },
+//             },
+//           },
+//         },
 
-        orderBy: {
-          tanggal: "desc",
-        },
+//         orderBy: {
+//           tanggal: "desc",
+//         },
 
-        skip: (page - 1) * limit,
+//         skip: (page - 1) * limit,
 
-        take: limit,
-      }),
-    ]);
+//         take: limit,
+//       }),
+//     ]);
 
-    return c.json({
-      success: true,
-      total,
-      page,
-      limit,
-      data,
-    });
-  } catch (error: any) {
-    return c.json(
-      {
-        success: false,
-        message: error.message,
-      },
-      500,
-    );
-  }
-});
+//     return c.json({
+//       success: true,
+//       total,
+//       page,
+//       limit,
+//       data,
+//     });
+//   } catch (error: any) {
+//     return c.json(
+//       {
+//         success: false,
+//         message: error.message,
+//       },
+//       500,
+//     );
+//   }
+// });
 
 /**
  * GET /bukukas/:id
@@ -225,9 +225,25 @@ app.get("/:id", async (c) => {
 /**
  * GET /bukukas/summary
  */
-app.get("/summary/total", async (c) => {
+app.get("/summary/total", checkUserToken(), async (c) => {
   try {
+    const user = c.get("user");
+    const { startDate, endDate } = c.req.query();
+
+    const where: any = { userId: user.id };
+
+    if (startDate && endDate) {
+      const endExclusive = new Date(endDate);
+      endExclusive.setDate(endExclusive.getDate() + 1);
+
+      where.tanggal = {
+        gte: new Date(startDate),
+        lt: endExclusive,
+      };
+    }
+
     const summary = await prisma.bukuKas.aggregate({
+      where,
       _sum: {
         totalMasuk: true,
         totalKeluar: true,
@@ -235,28 +251,19 @@ app.get("/summary/total", async (c) => {
     });
 
     const lastSaldo = await prisma.bukuKas.findFirst({
-      orderBy: {
-        tanggal: "desc",
-      },
+      where,
+      orderBy: { tanggal: "desc" },
+      select: { saldoAkhir: true },
     });
 
     return c.json({
       success: true,
-
       totalMasuk: summary._sum.totalMasuk ?? 0,
-
       totalKeluar: summary._sum.totalKeluar ?? 0,
-
       saldoAkhir: lastSaldo?.saldoAkhir ?? 0,
     });
   } catch (error: any) {
-    return c.json(
-      {
-        success: false,
-        message: error.message,
-      },
-      500,
-    );
+    return c.json({ success: false, message: error.message }, 500);
   }
 });
 
