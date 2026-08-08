@@ -18,35 +18,25 @@ app.get("/", checkUserToken(), async (c) => {
 
     const skip = (page - 1) * limit;
 
-    const where: any = {};
+    const user = c.get("user");
 
-    if (status) {
-      where.status = status;
-    }
+    const where: any = {
+      customer: {
+        area: {
+          users: { some: { id: user.id } },
+        },
+      },
+    };
 
-    if (bulan) {
-      where.bulan = Number(bulan);
-    }
-
-    if (tahun) {
-      where.tahun = Number(tahun);
-    }
+    if (status) where.status = status;
+    if (bulan) where.bulan = Number(bulan);
+    if (tahun) where.tahun = Number(tahun);
 
     if (search) {
-      where.customer = {
-        OR: [
-          {
-            fullname: {
-              contains: search,
-            },
-          },
-          {
-            username: {
-              contains: search,
-            },
-          },
-        ],
-      };
+      where.customer.OR = [
+        { fullname: { contains: search } },
+        { username: { contains: search } },
+      ];
     }
 
     const [data, total] = await prisma.$transaction([
@@ -111,8 +101,13 @@ app.get("/", checkUserToken(), async (c) => {
     );
   }
 });
+
 app.get("/dashboard", checkUserToken(), async (c) => {
   try {
+    const user = c.get("user");
+    const areaFilter = {
+      customer: { area: { users: { some: { id: user.id } } } },
+    };
     const now = new Date();
 
     const todayStart = new Date(now);
@@ -146,7 +141,6 @@ app.get("/dashboard", checkUserToken(), async (c) => {
 
       invoiceThisMonth,
     ] = await Promise.all([
-      // Jatuh tempo hari ini
       prisma.invoice.count({
         where: {
           status: {
@@ -162,6 +156,7 @@ app.get("/dashboard", checkUserToken(), async (c) => {
       // Jatuh tempo 7 hari ke depan
       prisma.invoice.count({
         where: {
+          ...areaFilter,
           status: {
             in: [InvoiceStatus.UNPAID, InvoiceStatus.PARTIAL],
           },
@@ -176,36 +171,42 @@ app.get("/dashboard", checkUserToken(), async (c) => {
 
       prisma.invoice.count({
         where: {
+          ...areaFilter,
           status: InvoiceStatus.PAID,
         },
       }),
 
       prisma.invoice.count({
         where: {
+          ...areaFilter,
           status: InvoiceStatus.UNPAID,
         },
       }),
 
       prisma.invoice.count({
         where: {
+          ...areaFilter,
           status: InvoiceStatus.PARTIAL,
         },
       }),
 
       prisma.invoice.count({
         where: {
+          ...areaFilter,
           status: InvoiceStatus.EXPIRED,
         },
       }),
 
       prisma.invoice.count({
         where: {
+          ...areaFilter,
           status: InvoiceStatus.CANCELLED,
         },
       }),
 
       prisma.invoice.count({
         where: {
+          ...areaFilter,
           status: {
             in: [InvoiceStatus.UNPAID, InvoiceStatus.PARTIAL],
           },
@@ -216,6 +217,9 @@ app.get("/dashboard", checkUserToken(), async (c) => {
       }),
 
       prisma.invoice.aggregate({
+        where: {
+          ...areaFilter,
+        },
         _sum: {
           total: true,
         },
@@ -223,6 +227,7 @@ app.get("/dashboard", checkUserToken(), async (c) => {
 
       prisma.invoice.aggregate({
         where: {
+          ...areaFilter,
           status: InvoiceStatus.PAID,
         },
         _sum: {
@@ -232,6 +237,7 @@ app.get("/dashboard", checkUserToken(), async (c) => {
 
       prisma.invoice.aggregate({
         where: {
+          ...areaFilter,
           status: {
             in: [InvoiceStatus.UNPAID, InvoiceStatus.PARTIAL],
           },
@@ -243,6 +249,7 @@ app.get("/dashboard", checkUserToken(), async (c) => {
 
       prisma.invoice.count({
         where: {
+          ...areaFilter,
           periode: {
             gte: firstDayMonth,
             lt: nextMonth,

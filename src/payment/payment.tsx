@@ -31,9 +31,27 @@ import { checkUserToken } from "../midleware/cekUserToken";
 
 const app = new Hono();
 
-// ============================================================
+// ======================================================
 // POST /payment — pembayaran manual CASH (langsung lunas)
 //   atau non-cash (status PENDING, menunggu upload bukti)
+// ======================================================
+function areaFilterForUser(user: { id: string; level?: string }) {
+  // if (user.level === "SUPER_ADMIN") return {}; // ← uncomment kalau super admin lihat semua
+  return {
+    customer: {
+      area: {
+        users: {
+          some: { id: user.id },
+        },
+      },
+    },
+  };
+}
+
+
+
+// ============================================================
+// POST / — pembayaran manual CASH / non-cash (VERSI BERSIH)
 // ============================================================
 app.post("/", checkUserToken(), async (c) => {
   try {
@@ -186,6 +204,39 @@ app.post("/", checkUserToken(), async (c) => {
     );
   }
 });
+
+// ============================================================
+// GET /all — semua payment, DIFILTER AREA BY USER
+// ============================================================
+app.get("/all", checkUserToken(), async (c) => {
+  const user = c.get("user");
+
+  try {
+    const payment = await prisma.payment.findMany({
+      // ⭐ Hanya payment dari customer yang area-nya terhubung user ini
+      where: areaFilterForUser(user),
+
+      include: {
+        customer: true,
+        createdBy: true,
+        pendapatan: true,
+        verification: true,
+        attachments: true,
+        invoice: true,
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    return c.json(payment);
+  } catch (error) {
+    console.error("Gagal mengambil semua payment:", error);
+    return c.json(
+      { success: false, message: "Gagal mengambil semua pembayaran." },
+      500
+    );
+  }
+});
+
 
 // ============================================================
 // POST /payment/:id/attachment — upload bukti transfer
@@ -407,33 +458,6 @@ app.patch("/:id/verify", checkUserToken(), async (c) => {
   }
 });
 
-// ============================================================
-// GET /payment/all — semua payment (TANPA pagination)
-// ⭐ HARUS didaftarkan SEBELUM /:id
-// ============================================================
-app.get("/all", checkUserToken(), async (c) => {
-  try {
-    const payment = await prisma.payment.findMany({
-      include: {
-        customer: true,
-        createdBy: true,
-        pendapatan: true,
-        verification: true,
-        attachments: true,
-        invoice: true,
-      },
-      orderBy: { createdAt: "desc" },
-    });
-
-    return c.json(payment);
-  } catch (error) {
-    console.error("Gagal mengambil semua payment:", error);
-    return c.json(
-      { success: false, message: "Gagal mengambil semua pembayaran." },
-      500
-    );
-  }
-});
 
 // ============================================================
 // GET /payment — list pagination + search

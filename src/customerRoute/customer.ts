@@ -15,15 +15,15 @@ app.get("/all", checkUserToken(), async (c) => {
 
   try {
     const customers = await prisma.customer.findMany({
-      // where: {
-      //   area: {
-      //     users: {
-      //       some: {
-      //         id: user.id,
-      //       },
-      //     },
-      //   },
-      // },
+      where: {
+        area: {
+          users: {
+            some: {
+              id: user.id,
+            },
+          },
+        },
+      },
       select: {
         id: true,
         username: true,
